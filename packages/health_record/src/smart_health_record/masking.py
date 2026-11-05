@@ -5,13 +5,13 @@ MAX_TEXT_LENGTH = 200
 MASK = "***"
 
 # scheme://userinfo@host：userinfo 取到最後一個 @（密碼可能含 @），不跨越 / ? # 與空白
-_URL_CREDENTIALS = re.compile(r"([A-Za-z][A-Za-z0-9+.\-]*://)[^/?#\s]*@")
+_URL_CREDENTIALS = re.compile(r"([A-Za-z][A-Za-z0-9+.\-]{0,31}://)[^/?#\s]*@")
 
 # 關鍵字（可帶前後綴，如 db_password、access_token）後接 : 或 =。
 # 值有三種：引號字串（支援反斜線跳脫，未收尾則遮蔽到字串結尾）、
 # 或未加引號的值（遮蔽到第一個空白或 & , ; ，值內的引號不截斷）。
 _KEY_VALUE = re.compile(
-    r"""(?:password|passwd|pwd|secret|token|api_key|apikey)[\w\-]*
+    r"""(?:password|passwd|pwd|secret|token|api_key|apikey)[\w\-]{0,64}
         ["']?\s*[:=]\s*
         (?:
             (?P<q>["'])(?:\\.|(?!(?P=q))[^\\])*\\?(?P<close>(?P=q))?

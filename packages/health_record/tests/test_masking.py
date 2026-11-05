@@ -98,3 +98,37 @@ def test_unquoted_value_with_inner_quote_masked_to_whitespace():
 
 def test_quoted_value_other_text_preserved():
     assert mask_text('a password="x y" b') == 'a password="***" b'
+
+
+def _elapsed(text: str) -> float:
+    import time
+
+    t0 = time.perf_counter()
+    mask_text(text)
+    return time.perf_counter() - t0
+
+
+def test_long_plain_input_is_fast():
+    assert _elapsed("x" * 200000) < 1.0
+
+
+def test_long_unterminated_quoted_value_is_fast():
+    assert _elapsed('password="' + "a" * 200000) < 1.0
+
+
+def test_long_repeated_keyword_is_fast():
+    assert _elapsed("password" * 25000) < 1.0
+
+
+def test_long_scheme_like_input_is_fast_and_still_masks():
+    assert _elapsed("a" * 200000 + "://") < 1.0
+    out = mask_text("a" * 40 + "://user:pw@host/x")
+    assert "pw" not in out and "user" not in out
+
+
+def test_masking_still_works_at_end_of_long_input():
+    out = mask_text("x" * 100000 + " rtsp://u:p@h/x")
+    assert out == "x" * 200
+    # 遮蔽發生在截斷之前，不能因輸入過長而漏遮
+    tail = mask_text("rtsp://u:p@h/x " + "y" * 100000)
+    assert tail.startswith("rtsp://***@h/x ")
