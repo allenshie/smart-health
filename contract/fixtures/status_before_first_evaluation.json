@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "service": "edge",
+  "instance": "CamA-northbound-1",
+  "topology_version": "7dfe2a247c6b2a64",
+  "started_at": "2026-11-05T10:00:00+08:00",
+  "evaluated_at": null,
+  "evaluation_age_s": 2.5,
+  "nodes": {},
+  "recent_transitions": []
+}

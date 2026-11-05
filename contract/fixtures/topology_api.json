@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "service": "api",
+  "instance": "api-1",
+  "topology_version": "775ab5578ee66749",
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Request path",
+      "parent": null,
+      "sequential": true,
+      "nodes": [
+        "gateway",
+        "handler",
+        "response"
+      ]
+    },
+    {
+      "id": "workers",
+      "label": "Background workers",
+      "parent": "handler",
+      "sequential": false,
+      "nodes": [
+        "job-runner",
+        "cache-warmer"
+      ]
+    },
+    {
+      "id": "batch",
+      "label": "Batch jobs",
+      "parent": "job-runner",
+      "sequential": false,
+      "nodes": [
+        "batch-export"
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "gateway",
+      "label": "Gateway",
+      "upstream": [],
+      "dependencies": []
+    },
+    {
+      "id": "handler",
+      "label": "Handler",
+      "upstream": [
+        "gateway",
+        "cache-warmer"
+      ],
+      "dependencies": [
+        "database",
+        "cache"
+      ]
+    },
+    {
+      "id": "response",
+      "label": "Response",
+      "upstream": [
+        "handler"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "job-runner",
+      "label": "Job runner",
+      "upstream": [
+        "handler"
+      ],
+      "dependencies": [
+        "database"
+      ]
+    },
+    {
+      "id": "cache-warmer",
+      "label": "Cache warmer",
+      "upstream": [],
+      "dependencies": [
+        "cache"
+      ]
+    },
+    {
+      "id": "batch-export",
+      "label": "Batch export",
+      "upstream": [
+        "job-runner",
+        "cache-warmer"
+      ],
+      "dependencies": []
+    }
+  ]
+}

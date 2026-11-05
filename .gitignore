@@ -1,0 +1,11 @@
+config/targets.yaml
+.env
+node_modules
+.venv
+.venv*
+dist
+__pycache__/
+.pytest_cache/
+*.egg-info/
+build/
+.superpowers/

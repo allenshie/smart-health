@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smart-health.local/contract/status.schema.json",
+  "title": "smart_health GET /status",
+  "type": "object",
+  "required": [
+    "schema_version", "service", "instance", "topology_version",
+    "started_at", "evaluated_at", "evaluation_age_s", "nodes", "recent_transitions"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "service": {"$ref": "#/$defs/id"},
+    "instance": {"type": "string", "minLength": 1},
+    "topology_version": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
+    "started_at": {"$ref": "#/$defs/timestamp"},
+    "evaluated_at": {"anyOf": [{"$ref": "#/$defs/timestamp"}, {"type": "null"}]},
+    "evaluation_age_s": {"type": "number", "minimum": 0},
+    "nodes": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/id"},
+      "additionalProperties": {"$ref": "#/$defs/node_status"}
+    },
+    "recent_transitions": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {"$ref": "#/$defs/transition"}
+    }
+  },
+  "if": {
+    "properties": {"evaluated_at": {"type": "null"}},
+    "required": ["evaluated_at"]
+  },
+  "then": {
+    "properties": {
+      "nodes": {"maxProperties": 0},
+      "recent_transitions": {"maxItems": 0}
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+    "reason": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+    "state": {"enum": ["ok", "degraded", "unavailable", "waiting", "disabled"]},
+    "timestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "node_status": {
+      "type": "object",
+      "required": ["state", "reason", "message", "since", "metrics"],
+      "properties": {
+        "state": {"$ref": "#/$defs/state"},
+        "reason": {"anyOf": [{"$ref": "#/$defs/reason"}, {"type": "null"}]},
+        "message": {"anyOf": [{"type": "string", "maxLength": 200}, {"type": "null"}]},
+        "since": {"$ref": "#/$defs/timestamp"},
+        "metrics": {
+          "type": "object",
+          "additionalProperties": {"type": ["number", "string", "boolean", "null"]}
+        }
+      },
+      "additionalProperties": true
+    },
+    "transition": {
+      "type": "object",
+      "required": ["node", "from", "to", "reason", "at"],
+      "properties": {
+        "node": {"$ref": "#/$defs/id"},
+        "from": {"anyOf": [{"$ref": "#/$defs/state"}, {"type": "null"}]},
+        "to": {"$ref": "#/$defs/state"},
+        "reason": {"anyOf": [{"$ref": "#/$defs/reason"}, {"type": "null"}]},
+        "at": {"$ref": "#/$defs/timestamp"}
+      },
+      "additionalProperties": true
+    }
+  }
+}

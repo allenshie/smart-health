@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "service": "edge",
+  "instance": "CamA-northbound-1",
+  "topology_version": "7dfe2a247c6b2a64",
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Main",
+      "parent": null,
+      "sequential": true,
+      "nodes": [
+        "ingest",
+        "infer",
+        "stream",
+        "publish"
+      ]
+    },
+    {
+      "id": "ingest-bg",
+      "label": "Ingest worker",
+      "parent": "ingest",
+      "sequential": false,
+      "nodes": [
+        "ingest-worker"
+      ]
+    },
+    {
+      "id": "stream-bg",
+      "label": "Stream output",
+      "parent": "stream",
+      "sequential": false,
+      "nodes": [
+        "stream-output"
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "ingest-worker",
+      "label": "Ingest worker",
+      "upstream": [],
+      "dependencies": []
+    },
+    {
+      "id": "ingest",
+      "label": "Ingest",
+      "upstream": [
+        "ingest-worker"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "infer",
+      "label": "Infer",
+      "upstream": [
+        "ingest"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "stream",
+      "label": "Stream",
+      "upstream": [
+        "infer"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "stream-output",
+      "label": "Stream output",
+      "upstream": [
+        "stream"
+      ],
+      "dependencies": [
+        "ffmpeg"
+      ]
+    },
+    {
+      "id": "publish",
+      "label": "Publish",
+      "upstream": [
+        "infer"
+      ],
+      "dependencies": [
+        "mqtt"
+      ]
+    }
+  ]
+}

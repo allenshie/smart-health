@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "service": "edge",
+  "instance": "CamA-northbound-1",
+  "topology_version": "7dfe2a247c6b2a64",
+  "started_at": "2026-11-05T10:00:00+08:00",
+  "evaluated_at": "2026-11-05T10:32:15+08:00",
+  "evaluation_age_s": 0.4,
+  "nodes": {
+    "ingest-worker": {
+      "state": "unavailable",
+      "reason": "no_new_frame",
+      "message": "已 12 秒沒有成功紀錄",
+      "since": "2026-11-05T10:32:03+08:00",
+      "metrics": {
+        "fps": 0.0
+      }
+    },
+    "ingest": {
+      "state": "waiting",
+      "reason": "upstream_not_ready",
+      "message": "上游尚未就緒",
+      "since": "2026-11-05T10:32:03+08:00",
+      "metrics": {}
+    },
+    "infer": {
+      "state": "waiting",
+      "reason": "upstream_not_ready",
+      "message": "上游尚未就緒",
+      "since": "2026-11-05T10:32:03+08:00",
+      "metrics": {}
+    },
+    "stream": {
+      "state": "waiting",
+      "reason": "upstream_not_ready",
+      "message": "上游尚未就緒",
+      "since": "2026-11-05T10:32:03+08:00",
+      "metrics": {}
+    },
+    "stream-output": {
+      "state": "waiting",
+      "reason": "upstream_not_ready",
+      "message": "上游尚未就緒",
+      "since": "2026-11-05T10:32:03+08:00",
+      "metrics": {}
+    },
+    "publish": {
+      "state": "waiting",
+      "reason": "upstream_not_ready",
+      "message": "上游尚未就緒",
+      "since": "2026-11-05T10:32:03+08:00",
+      "metrics": {}
+    }
+  },
+  "recent_transitions": [
+    {
+      "node": "publish",
+      "from": "ok",
+      "to": "waiting",
+      "reason": "upstream_not_ready",
+      "at": "2026-11-05T10:32:03+08:00"
+    },
+    {
+      "node": "stream-output",
+      "from": "ok",
+      "to": "waiting",
+      "reason": "upstream_not_ready",
+      "at": "2026-11-05T10:32:03+08:00"
+    },
+    {
+      "node": "stream",
+      "from": "ok",
+      "to": "waiting",
+      "reason": "upstream_not_ready",
+      "at": "2026-11-05T10:32:03+08:00"
+    },
+    {
+      "node": "infer",
+      "from": "ok",
+      "to": "waiting",
+      "reason": "upstream_not_ready",
+      "at": "2026-11-05T10:32:03+08:00"
+    },
+    {
+      "node": "ingest",
+      "from": "ok",
+      "to": "waiting",
+      "reason": "upstream_not_ready",
+      "at": "2026-11-05T10:32:03+08:00"
+    },
+    {
+      "node": "ingest-worker",
+      "from": "ok",
+      "to": "unavailable",
+      "reason": "no_new_frame",
+      "at": "2026-11-05T10:32:03+08:00"
+    }
+  ]
+}

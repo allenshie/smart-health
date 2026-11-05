@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smart-health.local/contract/topology.schema.json",
+  "title": "smart_health GET /topology",
+  "type": "object",
+  "required": ["schema_version", "service", "instance", "topology_version", "lanes", "nodes"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "service": {"$ref": "#/$defs/id"},
+    "instance": {"type": "string", "minLength": 1},
+    "topology_version": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
+    "lanes": {"type": "array", "items": {"$ref": "#/$defs/lane"}},
+    "nodes": {"type": "array", "items": {"$ref": "#/$defs/node"}}
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+    "lane": {
+      "type": "object",
+      "required": ["id", "label", "parent", "sequential", "nodes"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "label": {"type": "string"},
+        "parent": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "sequential": {"type": "boolean"},
+        "nodes": {"type": "array", "items": {"$ref": "#/$defs/id"}}
+      },
+      "additionalProperties": true
+    },
+    "node": {
+      "type": "object",
+      "required": ["id", "label", "upstream", "dependencies"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "label": {"type": "string"},
+        "upstream": {"type": "array", "items": {"$ref": "#/$defs/id"}},
+        "dependencies": {"type": "array", "items": {"$ref": "#/$defs/id"}}
+      },
+      "additionalProperties": true
+    }
+  }
+}
