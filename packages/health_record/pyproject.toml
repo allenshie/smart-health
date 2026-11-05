@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "smart-health-record"
+version = "0.1.0"
+description = "智慧倉儲各服務共用的健康狀態記錄函式庫（僅用標準函式庫）"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest", "jsonschema"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/smart_health_record"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
