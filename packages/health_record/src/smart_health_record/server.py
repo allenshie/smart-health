@@ -70,11 +70,19 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(405, {"error": "method_not_allowed"},
                    head_only=self.command == "HEAD", allow="GET")
 
-    do_POST = do_PUT = do_PATCH = do_DELETE = do_OPTIONS = do_HEAD = _method_not_allowed
+    def __getattr__(self, name: str):
+        # 任何非 GET 的方法（含未知方法）都回 405，避免標準庫的 501 HTML。
+        if name.startswith("do_"):
+            return self._method_not_allowed
+        raise AttributeError(name)
 
 
 class StatusServer:
-    """提供 `GET /topology`、`GET /status`；預設只綁定 127.0.0.1。"""
+    """提供 `GET /topology`、`GET /status`；預設只綁定 127.0.0.1。
+
+    `stop()` 後可再 `start()`；若建構時 port=0，重啟會沿用先前分配到的實際 port，
+    不會重新分配。
+    """
 
     def __init__(self, monitor: HealthMonitor, *, port: int, host: str = "127.0.0.1") -> None:
         if isinstance(port, bool) or not isinstance(port, int) or not 0 <= port <= 65535:

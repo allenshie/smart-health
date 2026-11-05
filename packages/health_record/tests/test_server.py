@@ -77,10 +77,11 @@ def test_get_topology_and_status_match_schema(ready, serve):
     assert st["service"] == "edge"
 
 
-def test_response_has_content_length_and_utf8(ready, serve):
+def test_response_has_content_length_and_content_type(ready, serve):
     s = serve(ready)
     _, resp, body = request(s, "GET", "/status")
     assert int(resp.getheader("Content-Length")) == len(body)
+    assert resp.getheader("Content-Type") == "application/json; charset=utf-8"
 
 
 def test_non_ascii_not_escaped(clock, wall, logger, serve):
@@ -124,6 +125,16 @@ def test_other_methods_return_405_with_allow(ready, serve, method, path):
     code, resp, body = request(s, method, path)
     assert code == 405
     assert resp.getheader("Allow") == "GET"
+    assert json.loads(body) == {"error": "method_not_allowed"}
+
+
+@pytest.mark.parametrize("method", ["FOO", "TRACE", "CONNECT"])
+def test_unlisted_methods_return_405_json(ready, serve, method):
+    s = serve(ready)
+    code, resp, body = request(s, method, "/status")
+    assert code == 405
+    assert resp.getheader("Allow") == "GET"
+    assert resp.getheader("Content-Type") == "application/json; charset=utf-8"
     assert json.loads(body) == {"error": "method_not_allowed"}
 
 
@@ -243,6 +254,19 @@ def test_stop_closes_socket_and_joins_thread(ready, serve):
     assert not thread.is_alive()
     with pytest.raises(OSError):
         socket.create_connection(("127.0.0.1", port), timeout=1)
+
+
+def test_restart_after_stop_reuses_previous_port(ready):
+    s = StatusServer(ready, port=0)
+    s.start()
+    port = s.port
+    s.stop()
+    s.start()
+    try:
+        assert s.port == port
+        assert get_json(s, "/status")[0] == 200
+    finally:
+        s.stop()
 
 
 def test_start_and_stop_are_idempotent(ready):
