@@ -1,8 +1,10 @@
 # smart_health 規格書
 
-- **狀態：** 待使用者審閱
-- **版本：** 1（2026-11-05）
+- **狀態：** 定稿
+- **版本：** 1.1（2026-11-05）
 - **實作計畫：** [PLAN.md](PLAN.md)
+
+**1.1 變更摘要：** 定義第一輪評估前與 `start()` 前的回應；明確 `id` 格式的適用範圍；定義非 `online` 時的節點內容；定義 `starting` 情境的模擬方式；補上 `config/targets.dev.yaml` 例外與 `limit` 的邊界行為。
 
 ## 1. 目標與範圍
 
@@ -111,7 +113,8 @@ HTTP 執行緒 /status ◀── 讀取快取結果 ┘
 
 ### 4.1 共通規則
 
-- `id` 格式：`^[a-z][a-z0-9_-]*$`。
+- `id` 格式：`^[a-z][a-z0-9_-]*$`。套用在 `service`，以及 lane、node、dependency、target 的 id。
+- `instance` 不套用 `id` 格式，只要求是非空字串。
 - `reason` 格式：`^[a-z][a-z0-9_]*$`，是固定代碼，不含動態內容。
 - `message` 是遮蔽過的人類可讀文字，最多 200 字元，可為 `null`。
 - 接受新增欄位：解析時要忽略未知欄位。
@@ -179,6 +182,13 @@ HTTP 執行緒 /status ◀── 讀取快取結果 ┘
 - `recent_transitions` 由新到舊，最多 50 筆。第一次評估到的狀態也算一筆，`from` 為 `null`。
 - `metrics` 的值只能是數字、字串、布林或 `null`。
 
+**第一輪評估完成前：** 回 HTTP 200，內容符合 schema，範例見 `contract/fixtures/status_before_first_evaluation.json`：
+
+- `evaluated_at` 為 `null`，`nodes` 為 `{}`，`recent_transitions` 為 `[]`。
+- `started_at` 已有值，`evaluation_age_s` 從 `start()` 起算。如果第一輪被阻塞，這個值會持續增加，後端因此判定為 `stale`。
+
+**`HealthMonitor.start()` 之前：** `GET /topology`、`GET /status` 都回 HTTP 503 JSON。
+
 ### 4.4 敏感資訊
 
 `/status` 沒有驗證，所有 `message` 寫入時都必須自動遮蔽：
@@ -222,9 +232,9 @@ class HealthMonitor:
 
     def start(self) -> None: ...          # 驗證架構並啟動評估執行緒，可重複呼叫
     def stop(self) -> None: ...           # 可重複呼叫
-    def evaluate_once(self) -> None: ...  # 執行一輪評估，供測試使用
-    def topology(self) -> dict: ...
-    def status(self) -> dict: ...
+    def evaluate_once(self) -> None: ...  # 執行一輪評估，供測試使用；未 start() 時視為以當下時間開始，但不啟動執行緒
+    def topology(self) -> dict: ...       # start() 前拋 RuntimeError
+    def status(self) -> dict: ...         # start() 前拋 RuntimeError
 
 
 class NodeRecorder:
@@ -266,6 +276,7 @@ def mask_text(text: str) -> str: ...
 **評估執行緒**
 
 - 每個 `HealthMonitor` 一條 daemon 執行緒。
+- 執行緒啟動後立刻跑第一輪評估，不等第一個 tick。
 - `dependencies`、`enabled` 的 callable 在評估執行緒呼叫。專案必須提供不阻塞的 callable，這點要寫進文件。
 - callable 拋例外時，dependency 視為 `None`、`enabled` 視為 `True`，同一個 callable 連續失敗只記一次警告。
 - 評估本身拋例外時，記錄後繼續下一輪，不能讓執行緒結束。
@@ -275,6 +286,7 @@ def mask_text(text: str) -> str: ...
 
 - 使用標準函式庫 `ThreadingHTTPServer`，daemon 執行緒。
 - 只接受 `GET /topology`、`GET /status`，其他路徑回 404 JSON，其他方法回 405。
+- `HealthMonitor` 尚未 `start()` 時，`StatusServer` 把 `RuntimeError` 轉成 503 JSON。
 - `port` 為必填，沒有預設值，因為同一台主機可能有多個實體。
 - 預設只綁定 `127.0.0.1`，對外要由專案明確設定。
 - 綁定失敗時 `start()` 拋 `OSError`，由專案決定如何處理。
@@ -293,6 +305,7 @@ def mask_text(text: str) -> str: ...
 - FastAPI、Pydantic v2、httpx、uvicorn、PyYAML，Python 3.11。
 - 設定路徑由環境變數 `SMART_HEALTH_CONFIG` 指定，預設 `config/targets.yaml`。
 - `config/targets.yaml` 不進版控，只追蹤 `config/targets.example.yaml`。
+- 例外：`config/targets.dev.yaml` 供 `docker-compose.dev.yml` 使用，也進版控，內容只能是模擬服務的位址。
 
 ```yaml
 poll_interval_s: 5        # 拉取與前端更新的間隔
@@ -325,11 +338,18 @@ targets:
 | `incompatible` | `schema_version` 不受支援 |
 | `invalid_response` | 回應不是 JSON，或不符合契約 |
 
-不是 `online` 時，保留上一次的架構讓畫面維持結構，但**所有節點一律回傳 `gray`**，不能保留上一次的顏色。
+不是 `online` 時，保留上一次的架構讓畫面維持結構，但**所有節點一律回傳 `gray`**，不能保留上一次的顏色，也不回傳舊狀態。每個節點的內容固定為：
+
+| 欄位 | 值 |
+|---|---|
+| `state`、`message`、`since` | `null` |
+| `metrics` | `{}` |
+| `reason` | 連線代碼，也就是 `connection` 的值 |
+| `color` | `gray` |
 
 狀態和架構不一致時：
 
-- 架構有、狀態沒有的節點：`state` 為 `null`、`color` 為 `gray`、`reason` 為 `status_missing`。
+- 架構有、狀態沒有的節點：`state`、`message`、`since` 為 `null`，`metrics` 為 `{}`，`color` 為 `gray`，`reason` 為 `status_missing`。第一輪評估前 `nodes` 為 `{}`，所以此時連線為 `online`，所有節點都是這個結果。
 - 狀態有、架構沒有的節點：忽略並記 log。
 
 ### 6.2 API
@@ -339,7 +359,7 @@ targets:
 | `GET /api/config` | `{"poll_interval_s": 5}` |
 | `GET /api/targets` | 目標清單：`id`、`name`、`connection`、`summary_color`、`last_success_at` |
 | `GET /api/targets/{id}` | 目標資訊，加上 `topology` 和帶 `color` 的節點狀態 |
-| `GET /api/targets/{id}/transitions?limit=` | 由新到舊的狀態變化，`limit` 預設 50，最大等於 `history_limit` |
+| `GET /api/targets/{id}/transitions?limit=` | 由新到舊的狀態變化，`limit` 預設 50，超過 `history_limit` 時壓到上限，小於 1 回 422 |
 | `GET /healthz` | 後端自身狀態 |
 | `GET /` 等 | 前端靜態檔案 |
 
@@ -381,7 +401,7 @@ ingest-worker
 要求：
 
 1. **由 `/topology` 動態產生，不寫死任何節點名稱**。要支援任意 lane 數量、每條任意節點數、巢狀 lane，並用不同架構的模擬服務驗證。
-2. 燈號顏色不能是唯一線索，還要有狀態文字或圖示，讓色弱使用者也能分辨。
+2. 燈號顏色不能是唯一線索，還要有狀態文字或圖示，讓色弱使用者也能分辨。`state` 為 `null` 時顯示「未知」。
 3. 不是 `online` 時，顯示橫幅和最後成功時間，例如「無法連線到此服務，最後更新 10:32:15」，所有燈號轉灰。
 4. 更新後保留目前選取的節點和詳細面板；節點不存在時才關閉。
 5. 前後端連線失敗時也要顯示錯誤並繼續重試，不能白畫面。
@@ -400,6 +420,8 @@ python -m mock_service --profile edge --instance mock-edge-a --host 0.0.0.0 \
 ```
 
 控制接口：`POST /scenario {"name": "camera_down"}`、`GET /scenario`。模擬執行緒以真實的呼叫方式操作 recorder。
+
+控制接口在獨立的 port 上獨立運作，不會隨 monitor 或 server 重建。
 
 ### 8.1 `edge` 模擬架構
 
@@ -437,6 +459,7 @@ python -m mock_service --profile edge --instance mock-edge-a --host 0.0.0.0 \
 | `worker_fatal` | R | 灰 | 灰 | 灰 | 灰 | 灰 |
 | `stream_disabled` | G | G | G | `disabled` | `disabled` | G |
 
+- `starting`：規則 3 要求「從未成功」，所以切到這個情境時，mock 會重建 `HealthMonitor` 和 `StatusServer` 來模擬服務重啟，`started_at` 也會改變，函式庫不提供重置 API。此情境不記錄成功，`startup_grace_s` 要大於觀察所需的時間。重建期間 `/status` 會短暫連不上，後端可能短暫顯示 `offline`，這是預期行為。
 - `infer_exception`：`infer` 持續以 `track()` 拋例外。依規則 9 為 `R`，超過 stale 門檻前是 `Y`。
 - `camera_and_mqtt_down`：依賴檢查排在上游檢查之前，所以 MQTT 問題仍看得到。
 - `stream_disabled`：`stream`、`stream-output` 的 `enabled` 為 false，下游 `publish` 依賴 `infer`，不受影響。
@@ -469,7 +492,9 @@ smart_health/
 │   ├── mock_service/              # 使用函式庫的模擬服務
 │   └── raw_mock/                  # 不符合契約的模擬服務
 ├── e2e/                           # Playwright 端對端測試
-├── config/targets.example.yaml
+├── config/
+│   ├── targets.example.yaml
+│   └── targets.dev.yaml           # 只含模擬服務的位址
 ├── deploy/
 │   ├── Dockerfile
 │   ├── docker-compose.yml         # Health App 實體
@@ -483,7 +508,7 @@ smart_health/
 
 ## 10. 發布與部署
 
-- 映像檔支援 `linux/amd64`、`linux/arm64`，因為部署主機尚未決定，可能是 Orin。
+- 映像檔支援 `linux/amd64`、`linux/arm64`，因為部署主機尚未決定，可能是 Orin。本機環境目前無法建置 arm64，實作階段只驗證 amd64；arm64 標明「未驗證，部署到 Orin 前必須補驗」，這項要求仍然有效。
 - 提供 `docker-compose.host.yml`：已知部分 Orin 的 kernel 沒有 iptables `raw` 表，Docker bridge 網路無法建立。
 - 函式庫 tag 用 `record-vX.Y.Z`，App tag 用 `app-vX.Y.Z`，兩者獨立。
 - CI 依路徑分開：
