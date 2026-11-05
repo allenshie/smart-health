@@ -7,35 +7,51 @@ MASK = "***"
 # scheme://userinfo@host：userinfo 取到最後一個 @（密碼可能含 @），不跨越 / ? # 與空白
 _URL_CREDENTIALS = re.compile(r"([A-Za-z][A-Za-z0-9+.\-]{0,31}://)[^/?#\s]*@")
 
-# 關鍵字（可帶前後綴，如 db_password、access_token）後接 : 或 =。
-# 值有三種：引號字串（支援反斜線跳脫，未收尾則遮蔽到字串結尾）、
+# 鍵值遮蔽採分段掃描，鍵長度沒有上限且維持線性時間（不使用 atomic group，相容 3.10）：
+# 1. _KEY_TOKEN 找出完整的鍵 token 與分隔符；lookbehind 讓比對只從 token 起點開始。
+# 2. _SENSITIVE 判斷鍵是否含敏感字樣（前後綴都算，如 db_password、access_token）。
+# 3. 敏感的鍵才用 _VALUE 比對值並替換；不敏感的鍵只跳過分隔符，不吃掉值。
+_KEY_TOKEN = re.compile(r"""(?<![\w\-])[\w\-]+["']?\s*[:=]\s*""")
+_KEY_ONLY = re.compile(r"[\w\-]+")
+_SENSITIVE = re.compile(r"password|passwd|pwd|secret|token|api_key|apikey", re.IGNORECASE)
+# 值：引號字串（支援反斜線跳脫，未收尾則遮蔽到字串結尾），
 # 或未加引號的值（遮蔽到第一個空白或 & , ; ，值內的引號不截斷）。
-_KEY_VALUE = re.compile(
-    r"""(?:password|passwd|pwd|secret|token|api_key|apikey)[\w\-]{0,64}
-        ["']?\s*[:=]\s*
-        (?:
-            (?P<q>["'])(?:\\.|(?!(?P=q))[^\\])*\\?(?P<close>(?P=q))?
-          | [^\s&,;"'][^\s&,;]*
-        )""",
-    re.IGNORECASE | re.VERBOSE | re.DOTALL,
+_VALUE = re.compile(
+    r"""(?:(?P<q>["'])(?:\\.|(?!(?P=q))[^\\])*\\?(?P<close>(?P=q))?
+        |[^\s&,;"'][^\s&,;]*)""",
+    re.VERBOSE | re.DOTALL,
 )
 
 
-def _mask_value(match: "re.Match[str]") -> str:
-    # 保留鍵與分隔符，只替換值；引號值保留起始引號，有收尾才補收尾引號
-    value_start = match.start("q") if match.group("q") else None
-    if value_start is None:
-        # 未加引號：值是 match 尾端那段，起點 = 最後一個分隔符之後
-        full = match.group(0)
-        sep = re.search(r"[:=]\s*", full)
-        return full[: sep.end()] + MASK
-    prefix = match.group(0)[: value_start - match.start()]
-    q = match.group("q")
-    return f"{prefix}{q}{MASK}{q if match.group('close') else ''}"
+def _mask_key_values(text: str) -> str:
+    parts = []
+    pos = 0  # 已輸出到的位置
+    scan = 0  # 掃描位置
+    while True:
+        key = _KEY_TOKEN.search(text, scan)
+        if key is None:
+            break
+        scan = key.end()
+        name = _KEY_ONLY.match(text, key.start()).group(0)
+        if not _SENSITIVE.search(name):
+            continue  # 不敏感：只越過分隔符，值仍可能是下一個鍵（x=password=abc）
+        value = _VALUE.match(text, scan)
+        if value is None:
+            continue
+        q = value.group("q")
+        if q:
+            masked = f"{q}{MASK}{q if value.group('close') else ''}"
+        else:
+            masked = MASK
+        parts.append(text[pos:scan])
+        parts.append(masked)
+        pos = scan = value.end()
+    parts.append(text[pos:])
+    return "".join(parts)
 
 
 def mask_text(text: str) -> str:
     """遮蔽敏感資訊後截斷到最多 200 字元（先遮蔽再截斷）。"""
     masked = _URL_CREDENTIALS.sub(lambda m: m.group(1) + MASK + "@", text)
-    masked = _KEY_VALUE.sub(_mask_value, masked)
+    masked = _mask_key_values(masked)
     return masked[:MAX_TEXT_LENGTH]

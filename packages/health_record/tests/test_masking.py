@@ -132,3 +132,31 @@ def test_masking_still_works_at_end_of_long_input():
     # 遮蔽發生在截斷之前，不能因輸入過長而漏遮
     tail = mask_text("rtsp://u:p@h/x " + "y" * 100000)
     assert tail.startswith("rtsp://***@h/x ")
+
+
+def test_masks_key_with_very_long_suffix():
+    assert mask_text("password" + "x" * 65 + "=secret") == "password" + "x" * 65 + "=***"
+    out = mask_text("password" + "x" * 100000 + "=secret")
+    assert "secret" not in out and out == ("password" + "x" * 100000 + "=***")[:200]
+
+
+def test_masks_value_after_non_sensitive_key():
+    assert mask_text("x=password=abc") == "x=password=***"
+    assert mask_text("a=b&token=abc&c=d") == "a=b&token=***&c=d"
+
+
+def test_long_repeated_keyword_still_masks_value():
+    import time
+
+    t0 = time.perf_counter()
+    out = mask_text("password" * 25000 + "=secret")
+    assert time.perf_counter() - t0 < 1.0
+    # 輸出被截斷到 200 字元，所以另以較短輸入驗證值遮蔽
+    assert mask_text("password" * 20 + "=secret").endswith("=***")
+    assert "secret" not in out
+
+
+def test_other_pathological_inputs_are_fast():
+    for text in ["a " * 100000, "a=" * 100000, "a" + " " * 200000,
+                 "password " * 25000, "-" * 200000]:
+        assert _elapsed(text) < 1.0
