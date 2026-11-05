@@ -69,3 +69,32 @@ def test_masks_before_truncating():
     out = mask_text("x" * 180 + " password=hunter2hunter2hunter2")
     assert "hunt" not in out and out.endswith("password=***")
     assert len(out) <= 200
+
+
+def test_masks_double_quoted_value_with_escaped_quote():
+    out = mask_text(r'password = "a\"b c" tail')
+    assert out == 'password = "***" tail'
+    out = mask_text(r'{"password": "a\"b c", "user": "bob"}')
+    assert "b c" not in out and out.endswith('"user": "bob"}')
+
+
+def test_masks_single_quoted_value_with_escaped_quote():
+    out = mask_text(r"secret = 'a\'b c' tail")
+    assert out == "secret = '***' tail"
+
+
+def test_masks_unterminated_quoted_value_to_end():
+    assert mask_text('token="abc') == 'token="***'
+    assert mask_text("token='abc def") == "token='***"
+    assert mask_text('token="abc def ghi') == 'token="***'
+    assert mask_text('pwd="abc\\') == 'pwd="***'
+
+
+def test_unquoted_value_with_inner_quote_masked_to_whitespace():
+    assert mask_text("Password: it's fine") == "Password: *** fine"
+    assert mask_text('pwd=ab"cd ef') == 'pwd=*** ef'
+    assert mask_text("token=a'b&x=1") == "token=***&x=1"
+
+
+def test_quoted_value_other_text_preserved():
+    assert mask_text('a password="x y" b') == 'a password="***" b'
