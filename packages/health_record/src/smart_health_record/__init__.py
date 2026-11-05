@@ -2,7 +2,8 @@
 from .masking import mask_text
 from .monitor import HealthMonitor
 from .recorder import NodeRecorder
+from .server import StatusServer
 
 __version__ = "0.1.0"
 
-__all__ = ["HealthMonitor", "NodeRecorder", "mask_text", "__version__"]
+__all__ = ["HealthMonitor", "NodeRecorder", "StatusServer", "mask_text", "__version__"]
