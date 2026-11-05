@@ -43,3 +43,47 @@ def logger(log_handler: ListHandler) -> logging.Logger:
     log.setLevel(logging.DEBUG)
     log.propagate = False
     return log
+
+
+class FakeWallClock:
+    """可手動調整的假 wall clock（含時區）。"""
+
+    def __init__(self) -> None:
+        import datetime as _dt
+
+        self.tz = _dt.timezone(_dt.timedelta(hours=8))
+        self.now = _dt.datetime(2026, 11, 5, 10, 0, 0, tzinfo=self.tz)
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        import datetime as _dt
+
+        self.now += _dt.timedelta(seconds=seconds)
+
+
+@pytest.fixture
+def wall() -> FakeWallClock:
+    return FakeWallClock()
+
+
+def build_edge(monitor, ffmpeg=lambda: True, mqtt=lambda: True):
+    """依 contract/fixtures/topology_edge.json 建立 edge 架構。"""
+    monitor.add_lane("main", "Main", sequential=True)
+    monitor.add_lane("ingest-bg", "Ingest worker", parent="ingest")
+    monitor.add_lane("stream-bg", "Stream output", parent="stream")
+    monitor.add_node("ingest-worker", "Ingest worker", "ingest-bg")
+    monitor.add_node("ingest", "Ingest", "main", upstream=["ingest-worker"])
+    monitor.add_node("infer", "Infer", "main", upstream=["ingest"])
+    monitor.add_node("stream", "Stream", "main", upstream=["infer"])
+    monitor.add_node("stream-output", "Stream output", "stream-bg", upstream=["stream"],
+                     dependencies={"ffmpeg": ffmpeg})
+    monitor.add_node("publish", "Publish", "main", upstream=["infer"],
+                     dependencies={"mqtt": mqtt})
+    return monitor
+
+
+@pytest.fixture
+def edge_builder():
+    return build_edge
