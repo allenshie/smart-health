@@ -176,3 +176,24 @@ def test_rule_10_error_outside_window_is_ok():
 
 def test_rule_11_ok():
     assert ev(sn=snap(last_success_at=STARTED + 99)) == ("ok", None, None)
+
+
+def test_rule_7_upstream_over_stale():
+    # camera_down 的關鍵：上游未就緒時，下游即使 stale 也只是 waiting
+    s = spec(stale_after_s=10)
+    sn = snap(last_success_at=STARTED + 10)
+    state, reason, _ = ev(s, sn, upstream_states={"u": "unavailable"})
+    assert (state, reason) == ("waiting", "upstream_not_ready")
+
+
+def test_rule_4_stuck_over_dependency():
+    s = spec(stuck_after_s=5, dependencies=("mqtt",))
+    sn = snap(in_progress_since=STARTED + 10, last_success_at=STARTED + 1)
+    assert ev(s, sn, dependencies={"mqtt": False})[1] == "stuck"
+
+
+def test_rule_9_stale_over_recent_error():
+    s = spec(stale_after_s=10)
+    sn = snap(last_success_at=STARTED + 50, last_error_at=STARTED + 99,
+              last_error_reason="decode_error")
+    assert ev(s, sn)[1] == "stale_success"

@@ -13,9 +13,10 @@ import time
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from .evaluator import blocks_lane, evaluate_node, lane_blocked_nodes
+from .evaluator import apply_rules
 from .recorder import NodeRecorder
 from .safelog import CallableGuard, LogBuffer, describe_exception
+from .published import PublishedRound, build_published
 from .tracker import TransitionTracker
 from .topology import (
     LaneSpec,
@@ -32,25 +33,10 @@ from .topology import (
 )
 
 SCHEMA_VERSION = 1
-_MAX_REPORTED_TRANSITIONS = 50
-_MAX_MESSAGE_LENGTH = 200
 
 
 def _local_now() -> datetime:
     return datetime.now().astimezone()
-
-
-class _Cache:
-    """一輪評估的發布結果；發布後不再修改。"""
-
-    __slots__ = ("evaluated_at", "published_mono", "nodes", "transitions")
-
-    def __init__(self, evaluated_at: str, published_mono: float, nodes: dict,
-                 transitions: list) -> None:
-        self.evaluated_at = evaluated_at
-        self.published_mono = published_mono
-        self.nodes = nodes
-        self.transitions = transitions
 
 
 class HealthMonitor:
@@ -65,6 +51,8 @@ class HealthMonitor:
         self._service = check_id(service, "service")
         self._instance = check_instance(instance)
         self._tick = check_positive(tick_interval_s, "tick_interval_s")
+        if self._tick > threading.TIMEOUT_MAX:  # 否則 Event.wait 會拋 OverflowError
+            raise ValueError("tick_interval_s 過大")
         if isinstance(max_transitions, bool) or not isinstance(max_transitions, int):
             raise ValueError("max_transitions 必須是整數")
         check_non_negative(max_transitions, "max_transitions")
@@ -91,7 +79,7 @@ class HealthMonitor:
         self._final_lanes: Tuple[LaneSpec, ...] = ()
         self._order: Tuple[str, ...] = ()
 
-        self._cache: Optional[_Cache] = None
+        self._cache: Optional[PublishedRound] = None
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
 
@@ -99,6 +87,8 @@ class HealthMonitor:
         self._guard = CallableGuard()
         self._tracker: Optional[TransitionTracker] = None  # 啟動時建立
         self._max_transitions = max_transitions
+
+        # 僅由評估執行緒的迴圈讀寫（不在 _eval_lock 內）：目前是否處於連續失敗
         self._round_failing = False
 
     # ------------------------------------------------------------ 註冊
@@ -213,76 +203,69 @@ class HealthMonitor:
 
     def _run(self, stop: threading.Event) -> None:
         while not stop.is_set():
-            self._guarded_round()
+            self._guarded_round(stop)
             stop.wait(self._tick)
 
-    def _guarded_round(self) -> None:
-        """執行一輪並攔截例外；連續失敗只記一次，成功後重置。"""
+    def _guarded_round(self, stop: Optional[threading.Event] = None) -> None:
+        """執行一輪並攔截所有例外（含 BaseException）；連續失敗只記一次，成功後重置。"""
         try:
-            self.evaluate_once()
+            self._run_round(stop)
             self._round_failing = False
-        except Exception as exc:
-            if not self._round_failing:
-                self._round_failing = True
+        except BaseException as exc:
+            if self._round_failing:
+                return
+            self._round_failing = True
+            try:
                 self._logger.error("evaluation failed: %s", describe_exception(exc))
+            except BaseException:
+                pass  # 最後防線：log 失敗也不能讓執行緒結束
 
     # ------------------------------------------------------------ 評估
 
     def evaluate_once(self) -> None:
+        self._run_round(None)
+
+    def _run_round(self, stop: Optional[threading.Event]) -> None:
         self._ensure_started()
         logs = LogBuffer()
         try:
             with self._eval_lock:
+                if stop is not None and stop.is_set():
+                    return  # 等鎖期間已被 stop，不再跑這一輪
                 self._evaluate(logs)
         finally:
             logs.emit(self._logger)
 
-    def _evaluate(self, logs: LogBuffer) -> None:
-        # 1. 在任何狀態鎖之外呼叫使用者的 callable
+    def _resolve_callables(self, logs: LogBuffer):
+        """在 _lock 之外呼叫使用者的 callable；失敗時 enabled 視為 True、dependency 視為 None。"""
         enabled: Dict[str, bool] = {}
         deps: Dict[str, Dict[str, Optional[bool]]] = {}
         for node_id in self._nodes:
             flag = self._enabled[node_id]
             enabled[node_id] = (
-                bool(self._guard.call((node_id, "enabled"), flag, True, logs))
+                bool(self._guard.call((node_id, "enabled"), lambda f=flag: bool(f()), True, logs))
                 if callable(flag) else flag
             )
             deps[node_id] = {
                 name: self._guard.call((node_id, f"dependency {name}"), fn, None, logs)
                 for name, fn in self._dep_fns[node_id].items()
             }
-        # 2. callable 結束後才取快照與時間，避免阻塞造成誤判
+        return enabled, deps
+
+    def _evaluate(self, logs: LogBuffer) -> None:
+        enabled, deps = self._resolve_callables(logs)
+        # callable 結束後才取快照與時間，避免阻塞造成誤判
         snaps = {node_id: rec.snapshot() for node_id, rec in self._recorders.items()}
-        now = self._clock()
-        started = self._started_mono
-        stuck = {
-            n for n, spec in self._nodes.items()
-            if blocks_lane(spec, snaps[n], now=now, started_at=started, enabled=enabled[n])
-        }
-        blocked = lane_blocked_nodes(self._final_lanes, stuck)
-        results: Dict[str, Tuple[str, Optional[str], Optional[str]]] = {}
-        for node_id in self._order:  # 拓樸順序：上游的同輪結果先算好
-            spec = self._nodes[node_id]
-            results[node_id] = evaluate_node(
-                spec, snaps[node_id], now=now, started_at=started, enabled=enabled[node_id],
-                dependencies=deps[node_id],
-                upstream_states={u: results[u][0] for u in spec.upstream},
-                lane_blocked=node_id in blocked,
-            )
-        # 3. 整輪算完才更新追蹤器並發布
+        results = apply_rules(self._nodes, self._order, self._final_lanes, snaps, enabled,
+                              deps, now=self._clock(), started_at=self._started_mono)
+        self._publish(results, snaps, logs)
+
+    def _publish(self, results: Dict[str, Tuple[str, Optional[str], Optional[str]]],
+                 snaps: Dict[str, Any], logs: LogBuffer) -> None:
+        """整輪算完才更新追蹤器，並以短暫持鎖換掉快取。"""
         at = self._now_wall().isoformat(timespec="milliseconds")
-        nodes_out: Dict[str, dict] = {}
-        for node_id in self._nodes:
-            state, reason, message = results[node_id]
-            if isinstance(message, str):
-                message = message[:_MAX_MESSAGE_LENGTH]
-            since = self._tracker.update(node_id, state, reason, at, logs)
-            nodes_out[node_id] = {
-                "state": state, "reason": reason, "message": message, "since": since,
-                "metrics": dict(snaps[node_id].metrics),
-            }
-        cache = _Cache(at, self._clock(), nodes_out,
-                       self._tracker.recent(_MAX_REPORTED_TRANSITIONS))
+        cache = build_published(tuple(self._nodes), results, snaps, self._tracker, at,
+                                self._clock(), logs)
         with self._lock:
             self._cache = cache
 

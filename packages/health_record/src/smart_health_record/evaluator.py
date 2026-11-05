@@ -2,7 +2,7 @@
 
 時間皆為 monotonic 秒數；「超過」一律使用嚴格大於。
 """
-from typing import Collection, Iterable, Mapping, Optional, Set, Tuple
+from typing import Collection, Dict, Iterable, Mapping, Optional, Sequence, Set, Tuple
 
 from .recorder import RecorderSnapshot
 from .topology import LaneSpec, NodeSpec
@@ -88,3 +88,32 @@ def evaluate_node(
             and now - snapshot.last_error_at <= spec.error_window_s):  # 10
         return "degraded", snapshot.last_error_reason, snapshot.last_error_message
     return "ok", None, None  # 11
+
+
+def apply_rules(
+    nodes: Mapping[str, NodeSpec],
+    order: Sequence[str],
+    lanes: Iterable[LaneSpec],
+    snapshots: Mapping[str, RecorderSnapshot],
+    enabled: Mapping[str, bool],
+    dependencies: Mapping[str, Mapping[str, Optional[bool]]],
+    *,
+    now: float,
+    started_at: float,
+) -> Dict[str, Tuple[str, Optional[str], Optional[str]]]:
+    """依拓樸順序評估所有節點；上游使用同一輪的結果。"""
+    blockers = {
+        n for n, spec in nodes.items()
+        if blocks_lane(spec, snapshots[n], now=now, started_at=started_at, enabled=enabled[n])
+    }
+    blocked = lane_blocked_nodes(lanes, blockers)
+    results: Dict[str, Tuple[str, Optional[str], Optional[str]]] = {}
+    for node_id in order:
+        spec = nodes[node_id]
+        results[node_id] = evaluate_node(
+            spec, snapshots[node_id], now=now, started_at=started_at,
+            enabled=enabled[node_id], dependencies=dependencies[node_id],
+            upstream_states={u: results[u][0] for u in spec.upstream},
+            lane_blocked=node_id in blocked,
+        )
+    return results

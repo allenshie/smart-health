@@ -46,7 +46,7 @@ class CallableGuard:
              logs: LogBuffer) -> Any:
         try:
             value = fn()
-        except Exception as exc:
+        except BaseException as exc:  # 評估執行緒不能因 callable 結束（含 SystemExit）
             if key not in self._failing:
                 self._failing.add(key)
                 logs.add(logging.WARNING, "node %s: %s callable raised %s; using default",
