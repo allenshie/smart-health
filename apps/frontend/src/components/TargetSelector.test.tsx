@@ -17,6 +17,15 @@ describe("TargetSelector", () => {
     expect(select.value).toBe("b");
   });
 
+  it("renders html in target names as plain text", () => {
+    const html = "<img src=x onerror=alert(1)>";
+    const { container } = render(
+      <TargetSelector targets={[{ ...targets[0], name: html }]} selectedId="a" onChange={() => {}} />,
+    );
+    expect(screen.getByRole("option").textContent).toBe(`${html}（online）`);
+    expect(container.querySelector("img")).toBeNull();
+  });
+
   it("reports the chosen target id", () => {
     const onChange = vi.fn();
     render(<TargetSelector targets={targets} selectedId="a" onChange={onChange} />);

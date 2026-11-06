@@ -164,6 +164,7 @@ describe("App", () => {
   });
 
   it("shows error and retries when backend is unreachable", async () => {
+    vi.setSystemTime(new Date("2026-11-06T02:32:15Z"));
     serve(targetDetail());
     render(<App />);
     await advance(0);
@@ -176,6 +177,7 @@ describe("App", () => {
     const alerts = screen.getAllByRole("alert");
     expect(alerts).toHaveLength(1);
     expect(alerts[0].textContent).toContain("無法連線到後端，將自動重試");
+    expect(alerts[0].textContent).toContain("最後成功 10:32:15");
     // 保留最後的畫面。
     expect(lamp("ingest")).toBeTruthy();
     expect(detailRegion()).not.toBeNull();
@@ -240,6 +242,41 @@ describe("App", () => {
     expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("mock-api");
 
     mockTargets.mockResolvedValue([summaryOf(a)]);
+    await advance(INTERVAL_MS);
+    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("mock-edge-a");
+    expect(lamp("infer")).toBeTruthy();
+  });
+
+  it("stays on the fallback target when the chosen one comes back", async () => {
+    const a = targetDetail();
+    const b = targetDetail({ id: "mock-api", name: "Mock API", topology: apiTopology });
+    mockTargets.mockResolvedValue([summaryOf(a), summaryOf(b)]);
+    mockTarget.mockImplementation(async (id) => (id === b.id ? b : a));
+    render(<App />);
+    await advance(0);
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "mock-api" } });
+    await advance(0);
+
+    mockTargets.mockResolvedValue([summaryOf(a)]);
+    await advance(INTERVAL_MS);
+    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("mock-edge-a");
+
+    mockTargets.mockResolvedValue([summaryOf(a), summaryOf(b)]);
+    await advance(INTERVAL_MS);
+    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("mock-edge-a");
+    expect(lamp("infer")).toBeTruthy();
+  });
+
+  it("keeps the initially shown target when the list order changes", async () => {
+    const a = targetDetail();
+    const b = targetDetail({ id: "mock-api", name: "Mock API", topology: apiTopology });
+    mockTargets.mockResolvedValue([summaryOf(a), summaryOf(b)]);
+    mockTarget.mockImplementation(async (id) => (id === b.id ? b : a));
+    render(<App />);
+    await advance(0);
+    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("mock-edge-a");
+
+    mockTargets.mockResolvedValue([summaryOf(b), summaryOf(a)]);
     await advance(INTERVAL_MS);
     expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("mock-edge-a");
     expect(lamp("infer")).toBeTruthy();

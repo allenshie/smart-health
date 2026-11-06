@@ -8,7 +8,7 @@
     "test": "vitest run",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit && vite build"
+    "build": "tsc -p tsconfig.build.json --noEmit && vite build"
   },
   "dependencies": {
     "react": "18.3.1",

@@ -141,6 +141,30 @@ describe("buildLaneTree", () => {
     expect(laneIds(tree).sort()).toEqual(["p", "q", "self"]);
   });
 
+  it("hangs a lane whose parent is inside a cycle under that parent, not at top level", () => {
+    const lanes = [
+      lane("d", "x", ["dn"]),
+      lane("p", "y", ["x"]),
+      lane("q", "x", ["y"]),
+    ];
+    const tree = buildLaneTree(topology(lanes, ["dn", "x", "y"]));
+    expect(tree.map((l) => l.id)).toEqual(["p"]);
+    expect(tree[0].nodes[0].children.map((l) => l.id)).toEqual(["d", "q"]);
+    expect(laneIds(tree).sort()).toEqual(["d", "p", "q"]);
+  });
+
+  it("follows a long parent chain into a cycle and places each lane once", () => {
+    const lanes = [
+      lane("e", "dn", ["en"]),
+      lane("d", "x", ["dn"]),
+      lane("p", "y", ["x"]),
+      lane("q", "x", ["y"]),
+    ];
+    const tree = buildLaneTree(topology(lanes));
+    expect(tree.map((l) => l.id)).toEqual(["p"]);
+    expect(laneIds(tree)).toEqual(["p", "d", "e", "q"]);
+  });
+
   it("attaches a child lane only once when its parent appears in several lanes", () => {
     const tree = buildLaneTree(
       topology([lane("m", null, ["a", "b"]), lane("n", null, ["a"]), lane("c", "a", ["c1"])]),

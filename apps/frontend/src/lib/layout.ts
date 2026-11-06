@@ -39,7 +39,8 @@ export function topologyNodeIds(topology: TopologyView): Set<string> {
 
 /**
  * 把 topology 的 lanes 轉成巢狀結構。被監控服務的輸入不一定正確，因此：
- * - parent 不在任何 lane 裡，或 parent 形成循環的 lane 當成頂層 lane。
+ * - parent 不在任何 lane 裡的 lane 當成頂層 lane；parent 形成循環時，取循環中的一條當頂層，
+ *   parent 在循環內但本身不在循環上的 lane 照常掛在 parent 底下。
  * - 每條 lane 只出現一次；parent 節點出現在多條 lane 時，掛在走訪時第一次遇到的位置。
  * - 沒被任何 lane 列出的節點放進最後一條「其他節點」lane。
  * - lane 列出但 nodes 沒有的 id 照樣顯示，label 用 id。
@@ -89,9 +90,24 @@ export function buildLaneTree(topology: TopologyView): LaneNode[] {
       placeTopLevel(i);
     }
   });
-  // 剩下的 lane 都在循環裡：依原順序取第一條當頂層，其餘會在走訪時掛上去。
+  // 剩下的 lane 不是在循環上，就是 parent 鏈通往循環。沿 parent 鏈往上走到第一次重複造訪的
+  // lane（循環成員）當頂層，其餘 lane 會在走訪時掛到各自的 parent 底下。
+  const ownerOf = (nodeId: string): number =>
+    lanes.findIndex((l, i) => !placed.has(i) && l.nodes.includes(nodeId));
   lanes.forEach((_lane, i) => {
-    if (!placed.has(i)) placeTopLevel(i);
+    while (!placed.has(i)) {
+      const seen = new Set<number>();
+      let current = i;
+      while (!seen.has(current)) {
+        seen.add(current);
+        const parent = lanes[current].parent;
+        const next = parent === null ? -1 : ownerOf(parent);
+        if (next < 0) break;
+        current = next;
+      }
+      // 每次至少放置一條尚未放置的 lane，因此外層迴圈一定會結束。
+      placeTopLevel(current);
+    }
   });
 
   const tree = topLevel.sort((a, b) => a.index - b.index).map((t) => t.lane);

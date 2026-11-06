@@ -32,6 +32,11 @@ function Dashboard({ intervalS }: { intervalS: number }) {
   const { data: targets, error, lastSuccessAt } = usePolling(fetchTargets, intervalMs);
   const [chosenId, setChosenId] = useState<string | null>(null);
   const target = targets === null ? undefined : resolveTarget(targets, chosenId);
+  // 初始選擇或 fallback 時，把實際顯示的目標同步回 state，之後清單順序改變或原目標重新出現都不會跳動。
+  // （render 期間調整 state，React 會立即重新 render。）
+  if (target !== undefined && target.id !== chosenId) {
+    setChosenId(target.id);
+  }
   const lastUpdate =
     target?.last_success_at == null ? "尚未取得" : formatTime(target.last_success_at);
 

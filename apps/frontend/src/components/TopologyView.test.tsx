@@ -4,6 +4,8 @@ import type { TopologyView as Topology } from "../api/types";
 import { apiTopology, edgeTopology, nodeView } from "../test/fixtures";
 import { TopologyView } from "./TopologyView";
 
+const HTML = "<img src=x onerror=alert(1)>";
+
 const irregular: Topology = {
   service: "odd",
   instance: "odd-1",
@@ -11,11 +13,11 @@ const irregular: Topology = {
   lanes: [
     { id: "one", label: "One", parent: "nowhere", sequential: true, nodes: ["p", "q", "unlisted"] },
     { id: "two", label: "Two", parent: "p", sequential: false, nodes: ["p", "r"] },
-    { id: "three", label: "Three", parent: "r", sequential: true, nodes: ["s"] },
+    { id: "three", label: `Three ${HTML}`, parent: "r", sequential: true, nodes: ["s"] },
   ],
   nodes: ["p", "q", "r", "s", "orphan-a", "orphan-b"].map((id) => ({
     id,
-    label: `Node ${id}`,
+    label: id === "s" ? `Node s ${HTML}` : `Node ${id}`,
     upstream: [],
     dependencies: [],
   })),
@@ -58,6 +60,15 @@ describe("TopologyView", () => {
     );
     expect(screen.getByText("其他節點")).toBeTruthy();
     expect(screen.getByRole("button", { name: "unlisted 未知" })).toBeTruthy();
+  });
+
+  it("renders html in node and lane labels as plain text", () => {
+    const { container } = render(
+      <TopologyView topology={irregular} nodes={{}} online selectedId={null} onSelect={() => {}} />,
+    );
+    expect(screen.getByText(`Node s ${HTML}`)).toBeTruthy();
+    expect(screen.getByText(`Three ${HTML}`)).toBeTruthy();
+    expect(container.querySelector("img")).toBeNull();
   });
 
   it("marks every lamp of the selected node as pressed", () => {
