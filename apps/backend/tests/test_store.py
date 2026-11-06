@@ -204,3 +204,23 @@ def test_failure_keeps_structure_and_grays_nodes(topology_edge, status_edge, con
     assert view.connection == connection
     assert view.topology is not None
     assert all(n.reason == connection and n.color == "gray" for n in view.nodes.values())
+
+
+def test_transition_models_are_frozen(topology_edge, status_edge):
+    store = make_store()
+    feed(store, topology_edge, status_edge)
+    item = store.get_transitions("t1", 1)[0]
+    with pytest.raises(Exception):
+        item.to = "ok"
+    view = store.get_view("t1")
+    with pytest.raises(Exception):
+        view.connection = "x"
+    with pytest.raises(Exception):
+        next(iter(view.nodes.values())).color = "x"
+
+
+@pytest.mark.parametrize("limit", [0, -1])
+def test_get_transitions_rejects_limit_below_one(limit):
+    store = make_store()
+    with pytest.raises(ValueError):
+        store.get_transitions("t1", limit)

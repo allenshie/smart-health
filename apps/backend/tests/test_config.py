@@ -108,3 +108,25 @@ def test_yaml_syntax_error_and_non_mapping(tmp_path):
         load_config(write(tmp_path, "- a\n- b\n"))
     with pytest.raises(ConfigError):
         load_config(tmp_path / "missing.yaml")
+
+
+@pytest.mark.parametrize(
+    "url", ["http://h:1?x=1", "http://h:1#frag", "http://h:1?", " http://h:1", "http://h:1 "]
+)
+def test_base_url_rejects_query_fragment_whitespace(tmp_path, url):
+    text = BASE.replace("http://a:1", f"'{url}'")
+    with pytest.raises(ConfigError, match=r"targets\[0\]\.base_url"):
+        load_config(write(tmp_path, text))
+
+
+def test_duplicate_yaml_key_rejected(tmp_path):
+    with pytest.raises(ConfigError, match="history_limit"):
+        load_config(write(tmp_path, BASE + "history_limit: 5\n"))
+    with pytest.raises(ConfigError, match="name"):
+        load_config(write(tmp_path, BASE + "    name: Other\n"))
+
+
+def test_duplicate_key_check_does_not_change_global_yaml(tmp_path):
+    import yaml
+
+    assert yaml.safe_load("a: 1\na: 2\n") == {"a": 2}

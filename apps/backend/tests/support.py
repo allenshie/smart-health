@@ -29,6 +29,8 @@ class FakeService:
         self.mode = "ok"  # ok | hang | http500 | redirect | raw_status | raw_topology
         self.raw_body: bytes = b""
         self.requests: list[str] = []
+        self.status_times: list[float] = []
+        self.delay = 0.0  # 每個請求回應前的延遲秒數
 
     def count(self, path: str) -> int:
         return sum(1 for r in self.requests if r == path)
@@ -36,6 +38,10 @@ class FakeService:
     async def handle(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
         self.requests.append(path)
+        if path == "/status":
+            self.status_times.append(time.monotonic())
+        if self.delay:
+            await asyncio.sleep(self.delay)
         if self.mode == "hang":
             await asyncio.sleep(3600)
         if self.mode == "http500":

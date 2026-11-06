@@ -25,12 +25,13 @@ ReasonStr = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]*$")]
 Timestamp = Annotated[
     str,
     StringConstraints(
-        pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$"
+        pattern=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
     ),
 ]
 VersionStr = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{16}$")]
 State = Literal["ok", "degraded", "unavailable", "waiting", "disabled"]
-MetricValue = int | float | str | bool | None
+FiniteFloat = Annotated[float, Field(allow_inf_nan=False)]
+MetricValue = int | FiniteFloat | str | bool | None
 
 
 class ContractError(Exception):
@@ -43,7 +44,7 @@ class ContractError(Exception):
 
 
 class _Model(BaseModel):
-    model_config = ConfigDict(extra="ignore", strict=True, populate_by_name=True)
+    model_config = ConfigDict(extra="ignore", strict=True, populate_by_name=True, frozen=True)
 
 
 class Lane(_Model):

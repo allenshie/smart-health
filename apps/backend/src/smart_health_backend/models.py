@@ -5,12 +5,19 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel
+from pydantic import ConfigDict, Field
 
 from .contract import Lane, TopologyNode
 
 
-class TargetSummary(BaseModel):
+class _Frozen(BaseModel):
+    """檢視模型一律唯讀，避免呼叫端改到內部資料。"""
+
+    model_config = ConfigDict(frozen=True)
+
+
+class TargetSummary(_Frozen):
     id: str
     name: str
     connection: str
@@ -18,7 +25,7 @@ class TargetSummary(BaseModel):
     last_success_at: str | None
 
 
-class TopologyView(BaseModel):
+class TopologyView(_Frozen):
     service: str
     instance: str
     topology_version: str
@@ -26,7 +33,7 @@ class TopologyView(BaseModel):
     nodes: list[TopologyNode]
 
 
-class NodeView(BaseModel):
+class NodeView(_Frozen):
     state: str | None
     reason: str | None
     message: str | None
@@ -40,8 +47,8 @@ class TargetDetail(TargetSummary):
     nodes: dict[str, NodeView]
 
 
-class Transition(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+class Transition(_Frozen):
+    model_config = ConfigDict(populate_by_name=True, frozen=True)
 
     node: str
     from_: str | None = Field(alias="from")

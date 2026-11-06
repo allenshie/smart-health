@@ -78,6 +78,7 @@ STATUS_NEGATIVE = {
     "null_not_empty": _mutate(lambda d: d.update(evaluated_at=None)),
     "bad_timestamp": _mutate(lambda d: d.update(started_at="2026-11-05 10:00:00")),
     "naive_timestamp": _mutate(lambda d: d.update(started_at="2026-11-05T10:00:00")),
+    "fullwidth_digits": _mutate(lambda d: d.update(started_at="２０２６-11-05T10:00:00+08:00")),
     "bad_since": _mutate(lambda d: d["nodes"]["ingest"].update(since="yesterday")),
     "negative_age": _mutate(lambda d: d.update(evaluation_age_s=-1)),
     "string_age": _mutate(lambda d: d.update(evaluation_age_s="1")),
@@ -188,3 +189,24 @@ def test_future_version_with_other_shape_is_incompatible_not_invalid():
     with pytest.raises(ContractError) as info:
         parse_status(dumps(doc))
     assert info.value.code == "incompatible"
+
+
+def test_metrics_overflow_to_inf_rejected():
+    text = (FIXTURES / "status_edge_camera_down.json").read_text("utf-8").replace("0.0", "1e400")
+    assert "1e400" in text
+    with pytest.raises(ContractError) as info:
+        parse_status(text)
+    assert info.value.code == "invalid_response"
+
+
+def test_age_overflow_to_inf_rejected():
+    doc = dumps(load_fixture("status_edge_camera_down.json")).replace('"evaluation_age_s": 0.4', '"evaluation_age_s": 1e999')
+    assert "1e999" in doc
+    with pytest.raises(ContractError):
+        parse_status(doc)
+
+
+def test_models_are_frozen():
+    model = parse_status(dumps(load_fixture("status_edge_camera_down.json")))
+    with pytest.raises(Exception):
+        model.instance = "x"

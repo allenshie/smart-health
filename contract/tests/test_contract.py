@@ -126,6 +126,14 @@ def test_rejects_time_without_timezone(status_validator, status_doc):
     assert not status_validator.is_valid(status_doc)
 
 
+def test_rejects_fullwidth_digits_in_time(status_validator, status_doc):
+    status_doc["started_at"] = "２０２６-11-05T10:00:00+08:00"
+    assert not status_validator.is_valid(status_doc)
+    status_doc["started_at"] = "2026-11-05T10:00:00+08:00"
+    status_doc["nodes"]["ingest-worker"]["since"] = "2026-11-05T１0:32:03+08:00"
+    assert not status_validator.is_valid(status_doc)
+
+
 def test_rejects_non_scalar_metric(status_validator, status_doc):
     status_doc["nodes"]["ingest-worker"]["metrics"] = {"fps": [1]}
     assert not status_validator.is_valid(status_doc)

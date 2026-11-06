@@ -152,6 +152,9 @@ class TargetStore:
         return TargetDetail(**summary.model_dump(), topology=topology, nodes=nodes)
 
     def get_transitions(self, target_id: str, limit: int) -> list[Transition] | None:
+        """由新到舊回傳最多 limit 筆；未知目標回 None。limit 小於 1 拋 ValueError。"""
+        if limit < 1:
+            raise ValueError("limit 必須 >= 1")
         state = self._targets.get(target_id)
         if state is None:
             return None

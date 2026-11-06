@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Hashable
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,6 +45,21 @@ class AppConfig:
     targets: list[TargetConfig] = field(default_factory=list)
 
 
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """拒絕重複鍵的 SafeLoader；只用於本模組，不改全域行為。"""
+
+    def construct_mapping(self, node, deep=False):  # type: ignore[no-untyped-def]
+        seen = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=True)
+            if not isinstance(key, Hashable):
+                continue  # 交給父類別報錯
+            if key in seen:
+                raise ConfigError(f"重複的 YAML 鍵 {key!r}（第 {key_node.start_mark.line + 1} 行）")
+            seen.add(key)
+        return super().construct_mapping(node, deep)
+
+
 def _check_unknown(mapping: dict[str, Any], allowed: set[str], path: str) -> None:
     for key in mapping:
         if key not in allowed:
@@ -82,6 +98,8 @@ def _parse_target(raw: Any, index: int, seen: set[str]) -> TargetConfig:
         raise ConfigError(f"{path}.name: 必須是非空字串")
     if not isinstance(base_url, str):
         raise ConfigError(f"{path}.base_url: 必須是字串")
+    if base_url != base_url.strip() or "?" in base_url or "#" in base_url:
+        raise ConfigError(f"{path}.base_url: 不可含前後空白、query 或 fragment")
     try:
         parts = urlsplit(base_url)
         host = parts.hostname
@@ -121,7 +139,7 @@ def load_config(path: Path) -> AppConfig:
     except OSError as exc:
         raise ConfigError(f"無法讀取設定檔 {path}: {exc.strerror or exc}") from exc
     try:
-        data = yaml.safe_load(text)
+        data = yaml.load(text, Loader=_UniqueKeyLoader)  # noqa: S506  自訂 SafeLoader 子類
     except yaml.YAMLError as exc:
         raise ConfigError(f"YAML 語法錯誤: {exc}") from exc
     return parse_config(data)
