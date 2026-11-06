@@ -1,0 +1,67 @@
+# smart-health-record 函式庫的 CI：只在函式庫與契約變動時執行。
+# 不發布：沒有 PyPI、registry、release 步驟，也不使用 secrets。
+name: record
+
+on:
+  push:
+    paths:
+      - "packages/**"
+      - "contract/**"
+      - ".github/workflows/record.yml"
+  pull_request:
+    paths:
+      - "packages/**"
+      - "contract/**"
+      - ".github/workflows/record.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: record-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ruff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: "3.11"
+      - run: pip install ruff==0.8.4
+      - run: ruff check packages contract examples apps
+
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11"]
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      # 測試工具的確切版本由 contract/requirements-dev.txt 固定
+      - run: pip install -r contract/requirements-dev.txt -e packages/health_record
+      - name: 契約測試
+        run: python -m pytest contract/tests -v --import-mode=importlib -W error
+      - name: 函式庫測試
+        run: python -m pytest packages/health_record/tests -v --import-mode=importlib -W error
+
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: "3.11"
+      # pyproject 的 build-system 沒有鎖定 hatchling，最新版產生的 Metadata 2.5 會讓 twine 6.1.0 拒絕；
+      # 這裡固定 hatchling 1.27.0（Metadata 2.4）並用 --no-isolation 建置
+      - run: pip install build==1.2.2 twine==6.1.0 hatchling==1.27.0
+      - run: python -m build --no-isolation packages/health_record
+      - run: twine check packages/health_record/dist/*

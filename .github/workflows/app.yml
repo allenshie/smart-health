@@ -1,0 +1,108 @@
+# Health App（後端、前端、映像檔、e2e）的 CI。
+# 不發布：沒有 registry push、release 步驟，也不使用 secrets。
+name: app
+
+on:
+  push:
+    paths:
+      - "apps/**"
+      - "contract/**"
+      - "deploy/**"
+      - "examples/**"
+      - "e2e/**"
+      - "config/**"
+      - ".github/workflows/app.yml"
+  pull_request:
+    paths:
+      - "apps/**"
+      - "contract/**"
+      - "deploy/**"
+      - "examples/**"
+      - "e2e/**"
+      - "config/**"
+      - ".github/workflows/app.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ruff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: "3.11"
+      - run: pip install ruff==0.8.4
+      - run: ruff check packages contract examples apps
+
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: "3.11"
+      # 執行時依賴以 hash 鎖定；dev 依賴寫確切版本
+      - run: pip install --require-hashes -r apps/backend/requirements.lock
+      - run: pip install pytest==9.2.0 anyio==4.16.0 jsonschema==4.26.0
+      # 後端整合測試會啟動 mock_service 子程序，需要函式庫；兩者都不另外安裝依賴
+      - run: pip install --no-deps -e apps/backend -e packages/health_record
+      - run: python -m pytest apps/backend/tests -q --import-mode=importlib -W error
+
+  examples:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: "3.11"
+      - run: pip install pytest==9.2.0 -e packages/health_record
+      - run: python -m pytest examples/tests -q --import-mode=importlib -W error
+
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/frontend
+    steps:
+      - uses: actions/checkout@v4.2.2
+      # Node 版本與 deploy/Dockerfile 的建置階段一致
+      - uses: actions/setup-node@v4.4.0
+        with:
+          node-version: "22.22.0"
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - run: docker build -f deploy/Dockerfile -t smart-health-app:ci .
+
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - run: docker compose -f deploy/docker-compose.dev.yml up --build --wait
+      # run.sh 會掛載 Docker socket 以停止與恢復 mock-edge-a；
+      # GitHub-hosted runner 是用完即丟的 VM，可以這樣做（自架 runner 不要）
+      - run: e2e/run.sh
+      - name: 收掉 dev compose
+        if: always()
+        run: docker compose -f deploy/docker-compose.dev.yml down
