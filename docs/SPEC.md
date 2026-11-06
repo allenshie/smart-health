@@ -1,8 +1,10 @@
 # smart_health 規格書
 
 - **狀態：** 定稿
-- **版本：** 1.1（2026-11-05）
+- **版本：** 1.2（2026-11-06）
 - **實作計畫：** [PLAN.md](PLAN.md)
+
+**1.2 變更摘要：** 依驗收關卡 1 回饋補強第 4.4 節的遮蔽：`Authorization` 標頭保留 scheme、遮蔽憑證；關鍵字中的 `-` 和 `_` 視為相同。CI 加入 Python lint（ruff）；導入指南要列出遮蔽的已知限制。
 
 **1.1 變更摘要：** 定義第一輪評估前與 `start()` 前的回應；明確 `id` 格式的適用範圍；定義非 `online` 時的節點內容；定義 `starting` 情境的模擬方式；補上 `config/targets.dev.yaml` 例外與 `limit` 的邊界行為。
 
@@ -197,8 +199,14 @@ HTTP 執行緒 /status ◀── 讀取快取結果 ┘
 |---|---|
 | `rtsp://admin:secret@10.0.0.1/live` | `rtsp://***@10.0.0.1/live` |
 | `password=secret`、`token: abc` | `password=***`、`token: ***` |
+| `Authorization: Bearer abc`、`Authorization: Basic dXNlcjpwYXNz` | `Authorization: Bearer ***`、`Authorization: Basic ***` |
+| `api-key=abc`、`x-api-key: abc` | `api-key=***`、`x-api-key: ***` |
 
-至少涵蓋 `password`、`passwd`、`pwd`、`secret`、`token`、`api_key`、`apikey`，不分大小寫。metrics 的字串值也一樣遮蔽。
+- 關鍵字至少涵蓋 `password`、`passwd`、`pwd`、`secret`、`token`、`api_key`、`apikey`、`authorization`，不分大小寫，鍵名含有關鍵字就遮蔽（例如 `db_password`、`x-api-key`）。
+- 比對關鍵字時，鍵名中的 `-` 和 `_` 視為相同，所以 `api-key`、`x-api-key`、`API-KEY` 都會遮蔽。
+- `Authorization` 的值為「scheme、空白、憑證」時，保留 scheme，只遮蔽憑證，例如 `Authorization: Bearer ***`；值只有一段時整段遮蔽。值加了引號時，和其他鍵一樣整段遮蔽，例如 `"Authorization": "***"`。
+- metrics 的字串值也一樣遮蔽。
+- 已知限制要寫進導入指南，見第 11 節。
 
 ## 5. 函式庫 `smart-health-record`
 
@@ -513,6 +521,7 @@ smart_health/
 - 函式庫 tag 用 `record-vX.Y.Z`，App tag 用 `app-vX.Y.Z`，兩者獨立。
 - CI 依路徑分開：
   - `packages/**`、`contract/**`：函式庫測試（Python 3.10、3.11），build，`twine check`。
+  - Python lint：用固定版本的 ruff（0.8.4）檢查 `packages`、`contract`、`examples`、`apps`，兩個 workflow 都執行。
   - `apps/**`、`contract/**`、`deploy/**`、`examples/**`、`e2e/**`：後端測試、前端 lint 和測試和建置、映像檔建置、e2e。
 - CI 不自動發布。**PyPI 發布和建立遠端 repo 都由使用者操作。**
 
@@ -527,4 +536,4 @@ smart_health/
 7. `smart-health-record` 的 wheel 安裝在只有標準函式庫的 Python 3.10 虛擬環境中可以正常運作。
 8. `bench_recorder.py` 的量測結果符合第 5.3 節。
 9. 文件完整：README、契約文件、函式庫導入指南、部署說明。
-10. 導入指南要說明 callable 不能阻塞、port 由專案指定、`message` 會被遮蔽。
+10. 導入指南要說明 callable 不能阻塞、port 由專案指定、`message` 會被遮蔽，並列出遮蔽的已知限制。
