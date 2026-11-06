@@ -10,10 +10,13 @@ _URL_CREDENTIALS = re.compile(r"([A-Za-z][A-Za-z0-9+.\-]{0,31}://)[^/?#\s]*@")
 # 鍵值遮蔽採分段掃描，鍵長度沒有上限且維持線性時間（不使用 atomic group，相容 3.10）：
 # 1. _KEY_TOKEN 找出完整的鍵 token 與分隔符；lookbehind 讓比對只從 token 起點開始。
 # 2. _SENSITIVE 判斷鍵是否含敏感字樣（前後綴都算，如 db_password、access_token）。
-# 3. 敏感的鍵才用 _VALUE 比對值並替換；不敏感的鍵只跳過分隔符，不吃掉值。
+# 3. 比對前先把鍵名的 - 換成 _（api-key 等同 api_key）；敏感的鍵才用 _VALUE 比對值並替換；不敏感的鍵只跳過分隔符，不吃掉值。
 _KEY_TOKEN = re.compile(r"""(?<![\w\-])[\w\-]+["']?\s*[:=]\s*""")
 _KEY_ONLY = re.compile(r"[\w\-]+")
-_SENSITIVE = re.compile(r"password|passwd|pwd|secret|token|api_key|apikey", re.IGNORECASE)
+_SENSITIVE = re.compile(r"password|passwd|pwd|secret|token|api_key|apikey|authorization", re.IGNORECASE
+)
+# Authorization 未加引號的值：scheme、空白或 tab、憑證。scheme 與空白不重疊，不會回溯。
+_AUTH_VALUE = re.compile(r"([^\s&,;\"'][^\s&,;]*[ \t]+)[^\s&,;]+")
 # 值：引號字串（支援反斜線跳脫，未收尾則遮蔽到字串結尾），
 # 或未加引號的值（遮蔽到第一個空白或 & , ; ，值內的引號不截斷）。
 _VALUE = re.compile(
@@ -33,8 +36,16 @@ def _mask_key_values(text: str) -> str:
             break
         scan = key.end()
         name = _KEY_ONLY.match(text, key.start()).group(0)
+        name = name.replace("-", "_")
         if not _SENSITIVE.search(name):
             continue  # 不敏感：只越過分隔符，值仍可能是下一個鍵（x=password=abc）
+        auth = _AUTH_VALUE.match(text, scan) if "authorization" in name.lower() else None
+        if auth is not None:
+            # 保留 scheme 與中間的空白，只遮蔽憑證
+            parts.append(text[pos:scan])
+            parts.append(auth.group(1) + MASK)
+            pos = scan = auth.end()
+            continue
         value = _VALUE.match(text, scan)
         if value is None:
             continue

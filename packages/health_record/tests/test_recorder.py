@@ -302,3 +302,9 @@ def test_concurrent_recording_is_safe(rec):
     [t.start() for t in ts]
     [t.join() for t in ts]
     assert rec.snapshot().last_success_at is not None
+
+
+def test_record_error_masks_authorization_header(rec):
+    rec.record_error("bad_auth", "Authorization: Bearer abc")
+    msg = rec.snapshot().last_error_message
+    assert "abc" not in msg and msg == "Authorization: Bearer ***"

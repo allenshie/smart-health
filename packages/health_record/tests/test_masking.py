@@ -1,3 +1,5 @@
+import pytest
+
 from smart_health_record import mask_text
 
 
@@ -160,3 +162,35 @@ def test_other_pathological_inputs_are_fast():
     for text in ["a " * 100000, "a=" * 100000, "a" + " " * 200000,
                  "password " * 25000, "-" * 200000]:
         assert _elapsed(text) < 1.0
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Authorization: Bearer abc.def", "Authorization: Bearer ***"),
+        ("Authorization: Basic dXNlcjpwYXNz", "Authorization: Basic ***"),
+        ("authorization=Bearer xyz", "authorization=Bearer ***"),
+        ("AUTHORIZATION: bearer xyz", "AUTHORIZATION: bearer ***"),
+        ("Proxy-Authorization: Basic abc", "Proxy-Authorization: Basic ***"),
+        ("Authorization: abc", "Authorization: ***"),
+        ('"Authorization": "Bearer abc"', '"Authorization": "***"'),
+        ("headers: Authorization: Bearer abc, next=1", "headers: Authorization: Bearer ***, next=1"),
+        ("api-key=abc", "api-key=***"),
+        ("x-api-key: abc", "x-api-key: ***"),
+        ("X-API-KEY=abc", "X-API-KEY=***"),
+        ("X-Api-Key: abc", "X-Api-Key: ***"),
+        ("api_key=abc", "api_key=***"),
+    ],
+)
+def test_masks_authorization_and_hyphenated_keys(text, expected):
+    assert mask_text(text) == expected
+
+
+def test_long_authorization_and_hyphenated_inputs_are_fast_and_masked():
+    for text in ["Authorization: Bearer " + "a" * 100000, "x-api-key=" * 20000,
+                 "Authorization: " + "a " * 100000, "authorization" * 15000,
+                 "Authorization:" + " " * 200000 + "a"]:
+        assert _elapsed(text) < 1.0
+    out = mask_text("Authorization: Bearer " + "a" * 100000)
+    assert out == "Authorization: Bearer ***"
+    assert "secret" not in mask_text("x-api-key=secret " * 20000)
