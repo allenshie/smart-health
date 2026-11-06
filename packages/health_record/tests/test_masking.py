@@ -194,3 +194,29 @@ def test_long_authorization_and_hyphenated_inputs_are_fast_and_masked():
     out = mask_text("Authorization: Bearer " + "a" * 100000)
     assert out == "Authorization: Bearer ***"
     assert "secret" not in mask_text("x-api-key=secret " * 20000)
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("authorization: password=hunter2 next", "authorization: *** next"),
+        ("missing authorization: api_key=xyz provided", "missing authorization: *** provided"),
+        ("authorization: token=abc def", "authorization: *** def"),
+        ("Authorization: Bearer\nabc", "Authorization: Bearer\n***"),
+        ("Authorization: Bearer abc", "Authorization: Bearer ***"),
+        ("Authorization: Bearer　abc", "Authorization: Bearer　***"),
+        ("Authorization: Bearer abc", "Authorization: Bearer ***"),
+        ('Authorization: Bearer "abc def"', 'Authorization: Bearer "***"'),
+        ("Authorization: Bearer 'abc", "Authorization: Bearer '***"),
+    ],
+)
+def test_authorization_scheme_is_token_only(text, expected):
+    assert mask_text(text) == expected
+
+
+def test_long_repeated_schemes_are_fast_and_masked():
+    for text in ["Authorization: " + "Bearer " * 30000,
+                 "authorization=" + "a" * 200000,
+                 "authorization: " + "a=" * 100000]:
+        assert _elapsed(text) < 1.0
+    assert mask_text("Authorization: " + "Bearer " * 30000).startswith("Authorization: Bearer ***")
