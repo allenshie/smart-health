@@ -1,11 +1,41 @@
 # smart-health-record
 
-記錄服務內各節點的事實（開始、成功、錯誤、致命故障、指標），供獨立的評估執行緒推導健康狀態。
-執行時只使用 Python 標準函式庫。
+在服務內記錄各節點的事實（開始、成功、錯誤、致命故障、指標），由獨立的評估執行緒推導健康狀態，並以 `GET /topology`、`GET /status` 提供給 Health App 讀取。
 
-目前已提供（Task 2）：
+- 執行時只使用 Python 標準函式庫，需要 Python 3.10 以上。
+- 公開 API：`HealthMonitor`、`StatusServer`、`mask_text`、`__version__`。
+- `message` 與字串型指標值會自動遮蔽密碼、token、URL 帳密等敏感資訊（有已知限制，見導入指南）。
 
-- `NodeRecorder`：執行緒安全的事實記錄器，所有方法都不會讓例外進入業務執行緒。
-- `mask_text`：敏感資訊遮蔽（URL 帳密、`password`／`token` 等鍵值），輸出最多 200 字元。
+## 安裝
 
-規格見專案 `docs/SPEC.md` 第 5 節。
+套件尚未發布到 PyPI。發布後可用：
+
+```bash
+pip install smart-health-record==0.1.0
+```
+
+在那之前，請在 repo 根目錄用 `python -m build packages/health_record` 建置 wheel 後安裝。
+
+## 最小範例
+
+```python
+from smart_health_record import HealthMonitor, StatusServer
+
+monitor = HealthMonitor("order-service", "order-1")
+monitor.add_lane("main", "主流程")
+worker = monitor.add_node("worker", "訂單處理", "main", stale_after_s=10)
+
+monitor.start()
+StatusServer(monitor, port=18090).start()   # port 必填；預設只綁定 127.0.0.1
+
+with worker.track():                        # 進入記 start，正常離開記 success，例外記 error 並往外拋
+    ...                                     # 處理一筆工作
+```
+
+之後 `curl http://127.0.0.1:18090/status` 即可取得狀態。
+
+## 文件
+
+- 導入指南（callable 不能阻塞、port 由專案指定、遮蔽的已知限制等）：`docs/INTEGRATION.md`
+- 契約：`contract/README.md`
+- 規格：`docs/SPEC.md` 第 5 節

@@ -1,56 +1,107 @@
 # smart_health
 
-通用的服務健康狀態系統：函式庫 `smart-health-record` 在各服務內記錄事實並評估狀態，Health App 後端集中拉取、前端顯示。規格見 `docs/SPEC.md`，計畫見 `docs/PLAN.md`。
+通用的服務健康狀態系統，由三部分組成：
 
-## 目前結構
+- **函式庫 `smart-health-record`**（`packages/health_record`）：在各服務內記錄事實（開始、成功、錯誤、致命故障、指標），由獨立的評估執行緒推導節點狀態，並以 `GET /topology`、`GET /status` 提供。只使用 Python 標準函式庫。
+- **Health App**（`apps/`）：後端（FastAPI）定期拉取各服務的 `/topology` 與 `/status`，前端（React + Vite）顯示架構圖與燈號。
+- **通用契約**（`contract/`）：兩個接口的 JSON Schema 與 fixtures；不使用函式庫的服務只要符合契約也能被監控。
+
+## 文件
+
+| 文件 | 內容 |
+|---|---|
+| `docs/SPEC.md` | 規格書 |
+| `docs/PLAN.md` | 實作計畫 |
+| `contract/README.md` | 契約與 `topology_version` 算法 |
+| `docs/INTEGRATION.md` | 函式庫導入指南：範例、callable 不能阻塞、port、`message` 遮蔽與已知限制 |
+| `docs/DEPLOY.md` | 部署說明：設定檔、compose、host 網路、網路安全限制 |
+| `packages/health_record/README.md` | 函式庫簡介與最小範例 |
+
+## 目錄結構
 
 ```text
-contract/   契約文件、JSON Schema、fixtures 與契約測試
-packages/   smart-health-record 函式庫
-apps/       Health App 後端（FastAPI）與前端（React + Vite）
-examples/   模擬服務 mock_service（edge、api）與 raw_mock（7 種不合契約的模式）
-config/     targets.example.yaml（範本）、targets.dev.yaml（只含模擬服務位址）
-deploy/     Dockerfile 與 compose 檔
-e2e/        Playwright 端對端測試
-docs/       規格書、實作計畫、驗收報告與截圖
+contract/           契約文件、JSON Schema、fixtures 與契約測試
+packages/           smart-health-record 函式庫（原始碼、測試、benchmarks）
+apps/backend/       Health App 後端（FastAPI），requirements.lock 鎖定執行時依賴
+apps/frontend/      Health App 前端（React + Vite）
+examples/           模擬服務 mock_service（edge、api）與 raw_mock（7 種不合契約的模式）
+config/             targets.example.yaml（範本）、targets.dev.yaml（只含模擬服務位址）
+deploy/             Dockerfile 與 compose 檔
+e2e/                Playwright 端對端測試
+docs/               規格書、實作計畫、導入指南、部署說明、驗收報告與截圖
+.github/workflows/  record.yml（函式庫）與 app.yml（Health App）兩個 CI，不發布任何東西
 ```
 
-完整說明待 Task 11 補上。
+## 本機測試
 
-## 映像檔
+下列指令都從 repo 根目錄執行。需要 [uv](https://docs.astral.sh/uv/)、Node.js 22 與 Docker。
 
-`deploy/Dockerfile` 為多階段建置，建置 context 是 repo 根目錄：
+### Python
 
-- `frontend` 階段：`npm ci` 後 `npm run build`（含型別檢查）。
-- `app` 階段（預設 target）：安裝 `apps/backend/requirements.lock`（`--require-hashes`）中鎖定的依賴，後端原始碼以 `PYTHONPATH` 載入，前端靜態檔放在 `/app/static`，由後端提供 `GET /`。以 uid 10001 的非 root 使用者執行。
-- `mock` 階段：只供 dev compose 與 e2e，從原始碼載入函式庫與模擬服務。
+```bash
+# 主要環境（Python 3.11）：契約、函式庫、後端、examples 與 lint
+uv venv --python 3.11 .venv
+uv pip install --python .venv/bin/python -r apps/backend/requirements.lock \
+  pytest==9.2.0 anyio==4.16.0 jsonschema==4.26.0 ruff==0.8.4
+uv pip install --python .venv/bin/python --no-deps -e apps/backend -e packages/health_record
 
-| 環境變數 | 預設 | 說明 |
+.venv/bin/ruff check packages contract examples apps
+.venv/bin/python -m pytest contract/tests -v --import-mode=importlib -W error
+.venv/bin/python -m pytest packages/health_record/tests -v --import-mode=importlib -W error
+.venv/bin/python -m pytest apps/backend/tests -q --import-mode=importlib -W error
+.venv/bin/python -m pytest examples/tests -q --import-mode=importlib -W error   # 約 1 分鐘
+
+# 函式庫相容性（Python 3.10）
+uv venv --python 3.10 .venv-3.10
+uv pip install --python .venv-3.10/bin/python -r contract/requirements-dev.txt -e packages/health_record
+.venv-3.10/bin/python -m pytest contract/tests packages/health_record/tests -q --import-mode=importlib -W error
+
+# 效能（不進 CI 判定）：record_success 單次平均必須低於 20 微秒
+.venv/bin/python packages/health_record/benchmarks/bench_recorder.py
+```
+
+### 前端
+
+```bash
+cd apps/frontend
+npm ci
+npm run lint && npm run typecheck && npm test && npm run build
+```
+
+前端測試會讀取 `contract/fixtures`，所以必須在完整的 repo 內執行。
+
+### 函式庫打包
+
+```bash
+uv venv --python 3.11 .venv-build
+uv pip install --python .venv-build/bin/python build==1.2.2 twine==6.1.0 hatchling==1.27.0
+.venv-build/bin/python -m build --no-isolation packages/health_record
+.venv-build/bin/twine check packages/health_record/dist/*
+```
+
+固定 `hatchling==1.27.0` 並用 `--no-isolation`，是因為 `pyproject.toml` 沒有鎖定 hatchling，較新版本產生的 Metadata 2.5 會被 `twine` 6.1.0 拒絕（`'2.5' is not a valid metadata version`）。
+
+### GitHub Actions workflow
+
+```bash
+docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
+```
+
+輸出必須為空。
+
+## CI
+
+| Workflow | 路徑過濾 | Jobs |
 |---|---|---|
-| `SMART_HEALTH_CONFIG` | `/config/targets.yaml` | 目標設定檔 |
-| `SMART_HEALTH_STATIC_DIR` | `/app/static` | 前端靜態檔目錄；設定了但不存在時啟動失敗 |
-| `UVICORN_HOST`、`UVICORN_PORT` | `0.0.0.0`、`8000` | 監聽位址；host 網路模式用 `UVICORN_PORT` 調整 |
+| `record.yml` | `packages/**`、`contract/**`、workflow 本身 | `ruff`、`test`（Python 3.10 與 3.11，含契約測試）、`build`（`python -m build` 加 `twine check`） |
+| `app.yml` | `apps/**`、`contract/**`、`deploy/**`、`examples/**`、`e2e/**`、`config/**`、workflow 本身 | `ruff`、`backend`、`examples`、`frontend`、`image`、`e2e` |
 
-`.dockerignore` 排除 `.env`、`config/targets.yaml` 等檔案，真實目標設定不會進入映像檔。
+兩個 workflow 都由 `push` 與 `pull_request` 觸發，且都**不發布**：沒有 PyPI、registry push 或 release 步驟，也不使用 secrets。PyPI 發布與建立遠端 repo 由使用者操作。
 
-更新後端依賴時重新產生鎖定檔：
+## 部署與導入
 
-```bash
-uv pip compile apps/backend/pyproject.toml --python-version 3.11 --generate-hashes \
-  -o apps/backend/requirements.lock
-```
-
-**平台：** 已驗證 `docker build --platform linux/amd64 -f deploy/Dockerfile .`。`linux/arm64` **未驗證，部署到 Orin 前必須補驗**（本機沒有 buildx 與 arm64 binfmt）。
-
-## 部署
-
-```bash
-cp config/targets.example.yaml config/targets.yaml   # 填入實際目標，此檔不進版控
-docker compose -f deploy/docker-compose.yml up -d --build              # bridge 網路，SMART_HEALTH_PORT 預設 8000
-UVICORN_PORT=8000 docker compose -f deploy/docker-compose.host.yml up -d --build   # host 網路（Orin 等環境）
-```
-
-`config/targets.yaml` 不存在時 compose 會直接失敗，不會自動建立同名目錄。
+- 部署（設定檔、compose、host 網路、無登入驗證的網路限制、映像檔）：`docs/DEPLOY.md`。
+- 讓服務使用函式庫：`docs/INTEGRATION.md`。
 
 ## 開發環境（Health App + 所有模擬服務）
 
@@ -82,7 +133,7 @@ docker compose -f deploy/docker-compose.dev.yml down
 - 從 `e2e/package.json` 讀出 `@playwright/test` 的確切版本，組出 `mcr.microsoft.com/playwright:v<版本>-noble`，兩者一定一致。
 - 用 `docker run --rm` 加入 `smart-health-dev_default` 網路，在容器內 `npm ci && npx playwright test`，`baseURL` 為 `http://health-app:8000`。
 - 以目前使用者的 uid/gid 執行，`HOME` 與 npm cache 放在容器的 `/tmp`，不產生 root 擁有的檔案。
-- 掛載 `/var/run/docker.sock` 並加入 socket 的群組，讓測試透過 Docker Engine API 停止與恢復 `mock-edge-a`。**只用於本機；共用環境與 CI 不要掛載 Docker socket。** CI 怎麼跑 e2e 由 Task 11 決定。
+- 掛載 `/var/run/docker.sock` 並加入 socket 的群組，讓測試透過 Docker Engine API 停止與恢復 `mock-edge-a`。**只用於本機與用完即丟的 CI runner（如 GitHub-hosted runner）；共用主機與自架 runner 不要掛載 Docker socket。** CI 的 `e2e` job 照用 `e2e/run.sh`，結束後用 `if: always()` 執行 `down`。
 - 只掛載 `e2e/` 與 `docs/acceptance/screenshots/`（以 `E2E_SCREENSHOT_DIR` 傳入），容器內讀不到 `.env`、`config/targets.yaml` 等其他檔案。
 - 情境切換透過 mock 的控制接口（`POST /scenario`）；情境測試用 `mock-edge-b`，停止與恢復用 `mock-edge-a`。
 - 截圖輸出到 `docs/acceptance/screenshots/`（`normal`、`camera_down`、`offline`、`mock-api`、`mobile`）。

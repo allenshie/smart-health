@@ -8,7 +8,7 @@
 # - 只掛載 e2e/ 與 docs/acceptance/screenshots/，容器內讀不到 .env、config/targets.yaml 等其他檔案；
 #   截圖目錄以 E2E_SCREENSHOT_DIR 傳入。
 # - 以目前使用者的 uid/gid 執行，避免產生 root 擁有的檔案；HOME 與 npm cache 放在 /tmp。
-# - 掛載 Docker socket 並加入 socket 的群組，只為了停止與恢復 mock-edge-a；只用於本機。
+# - 掛載 Docker socket 並加入 socket 的群組，只為了停止與恢復 mock-edge-a；只用於本機與用完即丟的 CI runner。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
