@@ -23,6 +23,8 @@ log = logging.getLogger(__name__)
 
 CONFIG_ENV = "SMART_HEALTH_CONFIG"
 DEFAULT_CONFIG_PATH = "config/targets.yaml"
+# 前端靜態檔目錄；未設定時不提供 GET /，設定了但目錄不存在時 StaticFiles 會在建立 app 時拋例外
+STATIC_DIR_ENV = "SMART_HEALTH_STATIC_DIR"
 
 
 def _log_run_failure(task: asyncio.Task[None]) -> None:
@@ -88,5 +90,6 @@ def __getattr__(name: str) -> Any:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     if _cached_app is None:
         path = Path(os.environ.get(CONFIG_ENV, DEFAULT_CONFIG_PATH))
-        _cached_app = create_app(load_config(path))
+        static = os.environ.get(STATIC_DIR_ENV)
+        _cached_app = create_app(load_config(path), static_dir=Path(static) if static else None)
     return _cached_app
