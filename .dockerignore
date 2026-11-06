@@ -1,0 +1,25 @@
+# 不把版控資料、本機環境、建置產物、機密與真實目標設定送進 build context
+.git
+.github
+.venv
+.venv*
+node_modules
+**/node_modules
+dist
+**/dist
+.superpowers
+.env
+**/.env
+config/targets.yaml
+__pycache__
+**/__pycache__
+.pytest_cache
+**/.pytest_cache
+.ruff_cache
+**/.ruff_cache
+*.egg-info
+**/*.egg-info
+e2e
+docs
+test-results
+playwright-report

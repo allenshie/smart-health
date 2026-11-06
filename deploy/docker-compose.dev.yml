@@ -1,0 +1,106 @@
+# 開發與 e2e 用：Health App + 所有模擬服務。
+#   docker compose -f deploy/docker-compose.dev.yml up --build --wait
+# 網路名稱固定為 smart-health-dev_default，e2e/run.sh 會加入這個網路。
+# 模擬服務只在 compose 網路內可見，不對 host 發布 port。
+name: smart-health-dev
+
+x-mock-build: &mock-build
+  image: smart-health-mock:dev
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+    target: mock
+
+# mock_service：檢查控制接口
+x-mock-service: &mock-service
+  <<: *mock-build
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:19081/scenario', timeout=2)"]
+    interval: 2s
+    timeout: 3s
+    retries: 15
+
+# raw_mock：任何 HTTP 回應（含 500）都代表服務已啟動
+x-raw-mock: &raw-mock
+  <<: *mock-build
+  healthcheck:
+    test: ["CMD", "python", "-c", "import http.client as h; c = h.HTTPConnection('127.0.0.1', 18090, timeout=2); c.request('GET', '/topology'); c.getresponse()"]
+    interval: 2s
+    timeout: 3s
+    retries: 15
+
+services:
+  health-app:
+    image: smart-health-app:dev
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: app
+    volumes:
+      - ../config/targets.dev.yaml:/config/targets.yaml:ro
+    ports:
+      - "127.0.0.1:18000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  # edge 門檻（理由見 README 與 Task 10 報告）：tick 0.2s、stuck 1s、stale 3s、error window 3s
+  # 讓情境在數秒內收斂；startup grace 30s 遠大於 starting 情境觀察所需的時間（重建 + 數次拉取）。
+  mock-edge-a:
+    <<: *mock-service
+    command: [python, -m, mock_service, --profile, edge, --instance, mock-edge-a,
+              --host, 0.0.0.0, --port, "18081", --control-port, "19081",
+              --tick-interval-s, "0.2", --stuck-after-s, "1", --stale-after-s, "3",
+              --error-window-s, "3", --startup-grace-s, "30"]
+
+  mock-edge-b:
+    <<: *mock-service
+    command: [python, -m, mock_service, --profile, edge, --instance, mock-edge-b,
+              --host, 0.0.0.0, --port, "18081", --control-port, "19081",
+              --tick-interval-s, "0.2", --stuck-after-s, "1", --stale-after-s, "3",
+              --error-window-s, "3", --startup-grace-s, "30"]
+
+  # api 架構沒有 stale_after_s 且閒置不記錄成功：startup grace 2s 後即為 ok
+  mock-api:
+    <<: *mock-service
+    command: [python, -m, mock_service, --profile, api, --instance, mock-api,
+              --host, 0.0.0.0, --port, "18081", --control-port, "19081",
+              --tick-interval-s, "0.2", --startup-grace-s, "2"]
+
+  # hang 不回應 HTTP，改用 TCP 連線檢查
+  raw-hang:
+    <<: *mock-build
+    command: [python, examples/raw_mock/raw_mock.py, --mode, hang, --host, 0.0.0.0, --port, "18090"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 18090), timeout=2).close()"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  raw-http-500:
+    <<: *raw-mock
+    command: [python, examples/raw_mock/raw_mock.py, --mode, http_500, --host, 0.0.0.0, --port, "18090"]
+
+  raw-invalid-json:
+    <<: *raw-mock
+    command: [python, examples/raw_mock/raw_mock.py, --mode, invalid_json, --host, 0.0.0.0, --port, "18090"]
+
+  raw-wrong-schema:
+    <<: *raw-mock
+    command: [python, examples/raw_mock/raw_mock.py, --mode, wrong_schema, --host, 0.0.0.0, --port, "18090"]
+
+  raw-missing-nodes:
+    <<: *raw-mock
+    command: [python, examples/raw_mock/raw_mock.py, --mode, missing_nodes, --host, 0.0.0.0, --port, "18090"]
+
+  # 每 4 秒在兩種架構間切換：大於數次拉取間隔，e2e 能看到兩種架構各自穩定出現
+  raw-topology-change:
+    <<: *raw-mock
+    command: [python, examples/raw_mock/raw_mock.py, --mode, topology_change, --host, 0.0.0.0,
+              --port, "18090", --change-interval-s, "4"]
+
+  raw-evaluation-stale:
+    <<: *raw-mock
+    command: [python, examples/raw_mock/raw_mock.py, --mode, evaluation_stale, --host, 0.0.0.0, --port, "18090"]

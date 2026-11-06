@@ -1,0 +1,23 @@
+# 正式部署的 Health App 實體（bridge 網路）。
+#   cp config/targets.example.yaml config/targets.yaml   # 填入實際目標；此檔不進版控
+#   docker compose -f deploy/docker-compose.yml up -d --build
+# 對外 port 用 SMART_HEALTH_PORT 調整（預設 8000）。
+# Docker bridge 網路無法建立的主機（如部分 Orin）改用 docker-compose.host.yml。
+services:
+  health-app:
+    image: smart-health-app:local
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: app
+    ports:
+      - "${SMART_HEALTH_PORT:-8000}:8000"
+    volumes:
+      # config/targets.yaml 不存在時直接失敗，不讓 Docker 自動建立同名目錄
+      - type: bind
+        source: ../config/targets.yaml
+        target: /config/targets.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+    restart: unless-stopped
