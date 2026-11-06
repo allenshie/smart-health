@@ -28,7 +28,9 @@ export function uniform(ids: readonly string[], lamp: Lamp): LampSnapshot {
   return Object.fromEntries(ids.map((id) => [id, lamp]));
 }
 
-const SCREENSHOT_DIR = path.resolve(__dirname, "../../../docs/acceptance/screenshots");
+// e2e/run.sh 以 E2E_SCREENSHOT_DIR 傳入掛載的截圖目錄；未設定時（直接在 repo 內執行）寫到 docs/acceptance/screenshots
+const SCREENSHOT_DIR =
+  process.env.E2E_SCREENSHOT_DIR ?? path.resolve(__dirname, "../../../docs/acceptance/screenshots");
 
 export function screenshotPath(name: string): string {
   return path.join(SCREENSHOT_DIR, `${name}.png`);

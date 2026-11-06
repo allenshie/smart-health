@@ -16,14 +16,14 @@ INDEX_HTML = "<!doctype html><title>前端</title><div id=root>前端首頁</div
 
 @pytest.fixture
 def entry_module(tmp_path, monkeypatch):
-    """設定檔就緒、快取已清空的進入點模組；測試結束後也清空快取。"""
+    """設定檔就緒、快取已清空的進入點模組。"""
     cfg = tmp_path / "targets.yaml"
     cfg.write_text(CONFIG_TEXT, encoding="utf-8")
     monkeypatch.setenv("SMART_HEALTH_CONFIG", str(cfg))
     monkeypatch.delenv("SMART_HEALTH_STATIC_DIR", raising=False)
-    module = importlib.reload(importlib.import_module("smart_health_backend.app"))
-    yield module
-    module._cached_app = None
+    module = importlib.import_module("smart_health_backend.app")
+    monkeypatch.setattr(module, "_cached_app", None)  # 測試結束時 monkeypatch 會還原
+    return module
 
 
 def static_dir(tmp_path):

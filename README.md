@@ -63,7 +63,7 @@ docker compose -f deploy/docker-compose.dev.yml down
 - 專案名稱固定為 `smart-health-dev`，網路為 `smart-health-dev_default`。
 - 包含 `health-app`、`mock-edge-a`、`mock-edge-b`、`mock-api` 與 7 個 `raw-*`（每個 raw_mock 模式一個）。每個 service 都有 healthcheck，`--wait` 會等到全部 healthy。
 - 只有 `health-app` 發布 `127.0.0.1:18000`；模擬服務只在 compose 網路內可見。
-- 目標設定為 `config/targets.dev.yaml`（只含模擬服務位址，拉取間隔 1 秒）。
+- 目標設定為 `config/targets.dev.yaml`（只含模擬服務位址，拉取間隔 1 秒、請求逾時 3 秒）。
 - 切換 edge 情境：`docker compose -f deploy/docker-compose.dev.yml exec mock-edge-b python -c "import urllib.request as u; print(u.urlopen(u.Request('http://127.0.0.1:19081/scenario', data=b'{\"name\": \"camera_down\"}', method='POST')).read())"`。
 - 本機 docker 沒有 buildx 時，compose v2.24.5 仍可用 Docker Engine 內建的 BuildKit 建置；`docker build` 則會使用 legacy builder 並顯示棄用警告，兩者都能建置成功。
 
@@ -82,7 +82,8 @@ docker compose -f deploy/docker-compose.dev.yml down
 - 從 `e2e/package.json` 讀出 `@playwright/test` 的確切版本，組出 `mcr.microsoft.com/playwright:v<版本>-noble`，兩者一定一致。
 - 用 `docker run --rm` 加入 `smart-health-dev_default` 網路，在容器內 `npm ci && npx playwright test`，`baseURL` 為 `http://health-app:8000`。
 - 以目前使用者的 uid/gid 執行，`HOME` 與 npm cache 放在容器的 `/tmp`，不產生 root 擁有的檔案。
-- 掛載 `/var/run/docker.sock` 並加入 socket 的群組，**只用於本機 e2e**：測試透過 Docker Engine API 停止與恢復 `mock-edge-a`。不要在 CI 以外的共用環境沿用這個做法。
+- 掛載 `/var/run/docker.sock` 並加入 socket 的群組，讓測試透過 Docker Engine API 停止與恢復 `mock-edge-a`。**只用於本機；共用環境與 CI 不要掛載 Docker socket。** CI 怎麼跑 e2e 由 Task 11 決定。
+- 只掛載 `e2e/` 與 `docs/acceptance/screenshots/`（以 `E2E_SCREENSHOT_DIR` 傳入），容器內讀不到 `.env`、`config/targets.yaml` 等其他檔案。
 - 情境切換透過 mock 的控制接口（`POST /scenario`）；情境測試用 `mock-edge-b`，停止與恢復用 `mock-edge-a`。
 - 截圖輸出到 `docs/acceptance/screenshots/`（`normal`、`camera_down`、`offline`、`mock-api`、`mobile`）。
 

@@ -14,10 +14,14 @@ for (const [target, nodes] of [
   test(`${target}：寬度 360px 不水平捲動`, async ({ page }) => {
     await openTarget(page, target);
     await waitLamps(page, uniform(nodes, lampOf("ok")));
-    const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
-    expect(scrollWidth).toBeLessThanOrEqual(360);
+    const scrollWidth = () => page.evaluate(() => document.documentElement.scrollWidth);
+    expect(await scrollWidth()).toBeLessThanOrEqual(360);
     if (target === "mock-edge-b") {
       await page.screenshot({ path: screenshotPath("mobile"), fullPage: true });
     }
+    // 開啟詳細面板後也不能水平捲動
+    await page.locator(`button.lamp[data-node-id="${nodes[0]}"]`).click();
+    await expect(page.locator("section.node-detail")).toBeVisible();
+    expect(await scrollWidth()).toBeLessThanOrEqual(360);
   });
 }

@@ -10,6 +10,8 @@ dist
 .superpowers
 .env
 **/.env
+.env.*
+**/.env.*
 config/targets.yaml
 __pycache__
 **/__pycache__

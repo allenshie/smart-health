@@ -85,20 +85,41 @@ test("topology_change：online，畫面上的架構跟著更新", async ({ page 
   }
 });
 
+// 平行拉取時 mock-edge-a 約每 poll_interval_s（1 秒）更新一次。若後端退化成循序拉取，
+// 每一輪都要等 raw-hang 逾時（request_timeout_s = 3 秒），更新間隔會變成約 3 秒以上。
+// 用後端 last_success_at 時間戳計算一段時間內的平均間隔與前進次數，不依賴單次差值。
+const POLL_INTERVAL_S = 1; // 與 config/targets.dev.yaml 一致
+const SAMPLE_WINDOW_MS = 10_000;
+const MAX_MEAN_INTERVAL_S = 1.5 * POLL_INTERVAL_S;
+const MIN_ADVANCES = 7;
+
 test("hang 目標不影響其他目標更新", async ({ page, request }) => {
   expect(await summary(request, "raw-hang")).toMatchObject({ connection: "offline" });
   await openTarget(page, "mock-edge-a");
   await expectConnection(page, "online");
   // 畫面：mock-edge-a 的最後更新時間持續前進
   await waitForUpdates(page, 3);
-  // 後端：mock-edge-a 的 last_success_at 持續前進，同時 raw-hang 仍掛住
-  for (let i = 0; i < 3; i++) {
-    const before = (await summary(request, "mock-edge-a")).last_success_at ?? "";
-    await expect
-      .poll(async () => Date.parse((await summary(request, "mock-edge-a")).last_success_at ?? ""))
-      .toBeGreaterThan(Date.parse(before));
-    expect(await summary(request, "raw-hang")).toMatchObject({ connection: "offline", summary_color: "gray" });
-  }
+
+  // 後端：取樣間隔遠小於拉取間隔，收集視窗內所有不同的 last_success_at
+  const seen = new Set<string>();
+  const started = Date.now();
+  await expect
+    .poll(
+      async () => {
+        const at = (await summary(request, "mock-edge-a")).last_success_at;
+        if (at !== null) seen.add(at);
+        return Date.now() - started >= SAMPLE_WINDOW_MS;
+      },
+      { intervals: [200], timeout: SAMPLE_WINDOW_MS + 10_000 },
+    )
+    .toBe(true);
+  const times = [...seen].map((at) => Date.parse(at)).sort((a, b) => a - b);
+  const advances = times.length - 1;
+  const meanIntervalS = (times[times.length - 1] - times[0]) / advances / 1000;
+  expect(advances, `視窗內前進次數（平均間隔 ${meanIntervalS.toFixed(2)} 秒）`).toBeGreaterThanOrEqual(MIN_ADVANCES);
+  expect(meanIntervalS, "mock-edge-a 的平均更新間隔").toBeLessThanOrEqual(MAX_MEAN_INTERVAL_S);
+  // 整段期間 raw-hang 仍掛住
+  expect(await summary(request, "raw-hang")).toMatchObject({ connection: "offline", summary_color: "gray" });
 });
 
 test.describe("mock-edge-a 停止與恢復", () => {
