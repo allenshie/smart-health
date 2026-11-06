@@ -15,5 +15,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+    // 固定時區，讓 HH:MM:SS 的斷言可預期（UTC+8，無日光節約）。
+    env: { TZ: "Asia/Taipei" },
   },
 });

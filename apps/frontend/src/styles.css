@@ -1,0 +1,247 @@
+/* smart_health 前端樣式；不使用 UI 框架。 */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #f6f7f9;
+  --fg: #1d232b;
+  --muted: #5b6573;
+  --border: #c9d0d9;
+  --panel: #ffffff;
+  --lamp-green: #1e8e3e;
+  --lamp-yellow: #f2b600;
+  --lamp-red: #d93025;
+  --lamp-gray: #80868b;
+  --banner-bg: #fff4e5;
+  --banner-border: #e8a33d;
+  --error-bg: #fdecea;
+  --error-border: #d93025;
+  font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans TC", "PingFang TC", sans-serif;
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
+
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 12px 16px 24px;
+}
+
+/* 頂部：選單與最後更新，窄螢幕時換行。 */
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+}
+
+.target-selector {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.target-selector select {
+  min-width: 0;
+  max-width: 100%;
+  font: inherit;
+  padding: 2px 4px;
+}
+
+.last-update {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.loading,
+.empty {
+  color: var(--muted);
+}
+
+.banner,
+.backend-error {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  border-left: 4px solid;
+  overflow-wrap: anywhere;
+}
+
+.banner {
+  background: var(--banner-bg);
+  border-color: var(--banner-border);
+}
+
+.backend-error {
+  background: var(--error-bg);
+  border-color: var(--error-border);
+}
+
+/* 架構圖：長 lane 在自己的容器內水平捲動，頁面不捲動。 */
+.topology {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.lane + .lane {
+  margin-top: 12px;
+}
+
+.lane-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+}
+
+.lane-label {
+  display: flex;
+  flex-direction: column;
+  min-width: 8rem;
+  max-width: 12rem;
+}
+
+.lane-name {
+  font-weight: 600;
+}
+
+.lane-parent {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.lane-nodes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lane-arrow {
+  color: var(--muted);
+}
+
+/* 子 lane 在 parent lane 下方縮排。 */
+.lane-children {
+  margin-top: 8px;
+  margin-left: 24px;
+  padding-left: 12px;
+  border-left: 2px dashed var(--border);
+}
+
+.lane-children > .lane + .lane {
+  margin-top: 8px;
+}
+
+/* 燈號：顏色點加上節點名稱與狀態文字。 */
+.lamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font: inherit;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.lamp:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 2px;
+}
+
+.lamp[aria-pressed="true"] {
+  border-color: var(--fg);
+  box-shadow: 0 0 0 1px var(--fg);
+}
+
+.lamp-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  background: var(--lamp-gray);
+  flex: none;
+}
+
+.lamp-green .lamp-dot {
+  background: var(--lamp-green);
+}
+
+.lamp-yellow .lamp-dot {
+  background: var(--lamp-yellow);
+}
+
+.lamp-red .lamp-dot {
+  background: var(--lamp-red);
+}
+
+.lamp-gray .lamp-dot {
+  background: var(--lamp-gray);
+}
+
+.lamp-state {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* 詳細面板：來自被監控服務的文字可能很長，一律可換行。 */
+.node-detail {
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
+.node-detail h2 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+}
+
+.node-detail dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+}
+
+.node-detail dt {
+  color: var(--muted);
+}
+
+.node-detail dt::after {
+  content: "：";
+}
+
+.node-detail dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.metrics {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
