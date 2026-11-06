@@ -1,0 +1,12 @@
+{
+  "name": "smart-health-e2e",
+  "private": true,
+  "version": "0.1.0",
+  "description": "smart_health 端對端測試：在官方 Playwright 映像檔內對 dev compose 的真實後端執行",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1"
+  }
+}
