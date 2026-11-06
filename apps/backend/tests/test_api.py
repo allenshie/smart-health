@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import logging
 import sys
 
 import httpx
@@ -197,3 +198,50 @@ def test_import_create_app_does_not_read_config(monkeypatch):
     sys.modules.pop("smart_health_backend.app", None)
     module = importlib.import_module("smart_health_backend.app")
     assert callable(module.create_app)
+
+
+async def test_docs_endpoints_are_disabled(network, make_service):
+    app, _, _ = build(network, make_service)
+    async with api_client(app) as client:
+        for path in ("/docs", "/redoc", "/openapi.json"):
+            assert (await client.get(path)).status_code == 404, path
+
+
+async def test_run_task_crash_is_logged(network, make_service, monkeypatch, caplog):
+    async def boom(self):
+        raise RuntimeError("poller 內部錯誤 XYZ")
+
+    monkeypatch.setattr(create_app.__globals__["Poller"], "run", boom)
+    app, _, _ = build(network, make_service)
+    with caplog.at_level(logging.ERROR):
+        async with api_client(app) as client:
+            await wait_until(lambda: app.state.run_task.done())
+            await asyncio.sleep(0)  # 讓 done callback 執行
+            assert (await client.get("/healthz")).status_code == 503
+    records = [r for r in caplog.records if r.levelno >= logging.ERROR and "XYZ" in r.getMessage() + str(r.exc_info)]
+    assert records, "run task 意外結束時必須記錄 error 與例外資訊"
+
+
+async def test_lifespan_startup_failure_closes_client(network, make_service, monkeypatch):
+    import httpx as httpx_module
+
+    created = []
+
+    class RecordingClient(httpx_module.AsyncClient):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            created.append(self)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("store 建立失敗")
+
+    # 其他測試會重新載入模組，所以直接改 create_app 實際使用的全域字典
+    app_globals = create_app.__globals__
+    monkeypatch.setitem(app_globals, "httpx", type("H", (), {"AsyncClient": RecordingClient}))
+    monkeypatch.setitem(app_globals, "TargetStore", fail)
+    app, _, _ = build(network, make_service)
+    with pytest.raises(RuntimeError, match="store 建立失敗"):
+        async with api_client(app):
+            pass
+    assert len(created) == 1
+    assert created[0].is_closed
