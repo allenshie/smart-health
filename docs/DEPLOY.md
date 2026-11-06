@@ -36,7 +36,7 @@ targets:
 重點：
 
 - **`base_url` 只存在後端**，不會出現在任何 API 回應，前端也看不到。錯誤也只以連線代碼（`offline`、`stale` 等）呈現，不回傳原始錯誤字串。
-- **設定錯誤時啟動會失敗**，並指出欄位路徑：格式錯誤、未知欄位、`id` 重複或格式錯誤、數值不是正數、`base_url` 不是 http 或 https，都會讓容器無法啟動。`docker compose logs health-app` 可看到原因。
+- **設定錯誤時啟動會失敗**，並指出欄位路徑：格式錯誤、未知欄位、`id` 重複或格式錯誤、數值不是正數、`base_url` 不是 http 或 https，都會讓後端啟動失敗（`restart: unless-stopped` 會讓容器反覆重啟）。`docker compose -f deploy/docker-compose.yml logs health-app` 可看到 `ConfigError` 與欄位路徑。
 - 每個目標獨立拉取，慢或掛掉的目標不影響其他目標；後端不跟隨重新導向。
 - 被監控服務要提供 `GET /topology` 與 `GET /status`，格式見 `contract/README.md`；使用函式庫的服務見 `docs/INTEGRATION.md`。
 
@@ -67,7 +67,7 @@ SMART_HEALTH_PORT=9000 docker compose -f deploy/docker-compose.yml up -d --build
 UVICORN_PORT=8000 docker compose -f deploy/docker-compose.host.yml up -d --build
 ```
 
-**原因（SPEC 第 10 節）：** 已知部分 Orin 的 kernel 沒有 iptables `raw` 表，Docker bridge 網路無法建立，這種主機要改用 host 網路。
+**原因（SPEC 第 10 節）：** 已知部分嵌入式主機的 kernel 沒有 iptables `raw` 表，Docker bridge 網路無法建立，這種主機要改用 host 網路。
 
 host 網路沒有 port 對應，容器直接使用主機的 port，所以 port 改由 `UVICORN_PORT` 指定（預設 `8000`），注意不要和主機上其他服務衝突。
 
