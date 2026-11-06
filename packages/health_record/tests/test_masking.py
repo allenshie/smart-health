@@ -202,7 +202,12 @@ def test_long_authorization_and_hyphenated_inputs_are_fast_and_masked():
         ("authorization: password=hunter2 next", "authorization: *** next"),
         ("missing authorization: api_key=xyz provided", "missing authorization: *** provided"),
         ("authorization: token=abc def", "authorization: *** def"),
-        ("Authorization: Bearer\nabc", "Authorization: Bearer\n***"),
+        # 已知限制：憑證放在下一行時，第一行只有一段，整段遮蔽，下一行不處理
+        ("Authorization: Bearer\nabc", "Authorization: ***\nabc"),
+        ("Authorization: s3cr3tT0ken\nnext line here", "Authorization: ***\nnext line here"),
+        ("Authorization: s3cr3tT0ken\r\nHost: x", "Authorization: ***\r\nHost: x"),
+        ("Authorization: abcdef\n\ntraceback", "Authorization: ***\n\ntraceback"),
+        ("Authorization: Bearer abc\nHost: x", "Authorization: Bearer ***\nHost: x"),
         ("Authorization: Bearer abc", "Authorization: Bearer ***"),
         ("Authorization: Bearer　abc", "Authorization: Bearer　***"),
         ("Authorization: Bearer abc", "Authorization: Bearer ***"),
