@@ -2,7 +2,6 @@
 
 不使用 sleep 等待狀態：以 Event 同步，或以輪詢加上限時間。
 """
-import copy
 import json
 import logging
 import threading

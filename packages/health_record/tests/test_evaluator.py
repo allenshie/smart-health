@@ -1,5 +1,4 @@
 """評估規則測試（規格書第 3 節）：只測純函式，不涉及執行緒與時鐘。"""
-import pytest
 
 from smart_health_record.evaluator import (
     blocks_lane,

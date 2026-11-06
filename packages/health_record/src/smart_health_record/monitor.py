@@ -167,8 +167,8 @@ class HealthMonitor:
                 return
             validate_graph(self._lanes, self._nodes)
             lanes = tuple(
-                LaneSpec(l.id, l.label, l.parent, l.sequential, tuple(self._lane_nodes[l.id]))
-                for l in self._lanes.values()
+                LaneSpec(lane.id, lane.label, lane.parent, lane.sequential, tuple(self._lane_nodes[lane.id]))
+                for lane in self._lanes.values()
             )
             topology = build_topology(self._service, self._instance, lanes,
                                       tuple(self._nodes.values()))

@@ -159,9 +159,9 @@ def topology_version(lanes: List[dict], nodes: List[dict]) -> str:
 def build_topology(service: str, instance: str, lanes: Sequence[LaneSpec],
                    nodes: Sequence[NodeSpec]) -> Dict[str, Any]:
     lane_list = [
-        {"id": l.id, "label": l.label, "parent": l.parent,
-         "sequential": l.sequential, "nodes": list(l.nodes)}
-        for l in lanes
+        {"id": ln.id, "label": ln.label, "parent": ln.parent,
+         "sequential": ln.sequential, "nodes": list(ln.nodes)}
+        for ln in lanes
     ]
     node_list = [
         {"id": n.id, "label": n.label, "upstream": list(n.upstream),

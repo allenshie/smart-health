@@ -178,18 +178,21 @@ def test_invalid_stale_reason_raises(reason):
 def test_topology_version_is_deterministic(edge_builder):
     a = edge_builder(new())
     b = edge_builder(new())
-    a.start(); b.start()
+    a.start()
+    b.start()
     try:
         assert a.topology()["topology_version"] == b.topology()["topology_version"]
     finally:
-        a.stop(); b.stop()
+        a.stop()
+        b.stop()
     c = new()
     c.add_lane("main", "Main")
     c.add_node("x", "X", "main")
     d = new()
     d.add_lane("main", "Main")
     d.add_node("y", "X", "main")
-    c.evaluate_once(); d.evaluate_once()
+    c.evaluate_once()
+    d.evaluate_once()
     assert c.topology()["topology_version"] != d.topology()["topology_version"]
 
 

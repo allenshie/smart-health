@@ -3,7 +3,6 @@
 測試一律以子程序執行真實 CLI，並透過真實 HTTP 互動。
 """
 import json
-import os
 import socket
 import subprocess
 import sys
