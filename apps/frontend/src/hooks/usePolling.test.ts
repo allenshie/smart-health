@@ -134,8 +134,12 @@ describe("usePolling", () => {
     });
     await advance(0);
     rerender({ ms: 1000 });
-    await advance(1000);
-    expect(fn.mock.calls.length).toBeGreaterThanOrEqual(2);
+    await advance(0);
+    expect(fn).toHaveBeenCalledTimes(2);
+    await advance(999);
+    expect(fn).toHaveBeenCalledTimes(2);
+    await advance(1);
+    expect(fn).toHaveBeenCalledTimes(3);
   });
 
   it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(

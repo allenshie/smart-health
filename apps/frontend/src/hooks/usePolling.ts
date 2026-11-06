@@ -10,6 +10,9 @@ export interface PollingResult<T> {
  * 輪詢 fn：掛載時立刻呼叫，之後在上一次呼叫結束後等待 intervalMs 再呼叫。
  * 失敗時保留上一次的 data 與 lastSuccessAt，並持續重試。
  * intervalMs 不是有限正數時只呼叫第一次。
+ *
+ * 取捨：intervalMs 改變時舊的輪詢鏈會取消，舊的在途請求結果被丟棄，
+ * 新鏈立刻發出請求，可能短暫重疊一次；實務上只在載入 config 時發生一次。
  */
 export function usePolling<T>(fn: () => Promise<T>, intervalMs: number): PollingResult<T> {
   const [state, setState] = useState<PollingResult<T>>({
