@@ -16,10 +16,10 @@ _KEY_ONLY = re.compile(r"[\w\-]+")
 _SENSITIVE = re.compile(
     r"password|passwd|pwd|secret|token|api_key|apikey|authorization", re.IGNORECASE
 )
-# Authorization 的 scheme：英文字母開頭的 token 字元（不含 = : 引號），後接同一行的空白（不含換行）。
+# Authorization 的 scheme：英文字母開頭的 token 字元（不含 = : 引號），後接同一行的空白（只列舉空格、tab、NBSP、全形空白，不含任何換行或分隔字元）。
 # 不符合時退回一般規則整段遮蔽，避免 scheme 位置吞掉內層敏感鍵值。
 # scheme 與空白字元集互斥，不會回溯成二次成長。
-_AUTH_SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9._~+\-]*[^\S\r\n]+")
+_AUTH_SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9._~+\-]*[ \t\u00a0\u3000]+")
 # 值：引號字串（支援反斜線跳脫，未收尾則遮蔽到字串結尾），
 # 或未加引號的值（遮蔽到第一個空白或 & , ; ，值內的引號不截斷）。
 _VALUE = re.compile(

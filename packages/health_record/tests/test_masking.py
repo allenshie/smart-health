@@ -225,3 +225,8 @@ def test_long_repeated_schemes_are_fast_and_masked():
                  "authorization: " + "a=" * 100000]:
         assert _elapsed(text) < 1.0
     assert mask_text("Authorization: " + "Bearer " * 30000).startswith("Authorization: Bearer ***")
+
+
+@pytest.mark.parametrize("sep", ["\x0b", "\x0c", "\x85", " ", " "])
+def test_authorization_separator_is_inline_space_only(sep):
+    assert mask_text(f"Authorization: tok{sep}next") == f"Authorization: ***{sep}next"
