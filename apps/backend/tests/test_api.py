@@ -195,7 +195,7 @@ def test_module_app_invalid_config_raises(tmp_path, monkeypatch):
 
 def test_import_create_app_does_not_read_config(monkeypatch):
     monkeypatch.setenv("SMART_HEALTH_CONFIG", "/nonexistent/x.yaml")
-    sys.modules.pop("smart_health_backend.app", None)
+    monkeypatch.delitem(sys.modules, "smart_health_backend.app", raising=False)
     module = importlib.import_module("smart_health_backend.app")
     assert callable(module.create_app)
 
