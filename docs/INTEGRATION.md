@@ -86,7 +86,7 @@ curl http://127.0.0.1:18090/status
 | `record_error(reason, message=None)` | 一次錯誤；`error_window_s`（預設 30 秒）內節點為 `degraded` |
 | `set_fatal(reason, message=None)`、`clear_fatal()` | 致命故障；節點為 `unavailable`，直到清除 |
 | `set_metric(name, value)` | 指標，值只接受數字、字串、布林或 `None` |
-| `track()` | context manager：進入記 `record_start`，正常結束記 `record_success`，例外記 `record_error("exception", ...)` 並原樣往外拋 |
+| `track()` | context manager：進入記 `record_start`，正常結束記 `record_success`，例外記 `record_error("exception", ...)` 並原樣往外拋。被取消（`asyncio.CancelledError`）或 `KeyboardInterrupt` 等非 `Exception` 的 `BaseException` 中斷時，只清除進行中狀態，不記 success 也不記 error，例外同樣原樣往外拋 |
 
 `reason` 必須符合 `^[a-z][a-z0-9_]*$`，格式錯誤時會改用 `invalid_reason` 並記一次警告。這些方法不會讓例外進入業務執行緒。
 

@@ -8,11 +8,6 @@ from smart_health_record import NodeRecorder
 from smart_health_record.recorder import RecorderSnapshot
 
 
-@pytest.fixture
-def rec(clock, logger):
-    return NodeRecorder("n1", clock, logger)
-
-
 def test_initial_snapshot_is_empty(rec):
     s = rec.snapshot()
     assert s.last_success_at is None and s.last_error_at is None
@@ -159,43 +154,6 @@ def test_snapshot_metrics_cannot_mutate_internal_state(rec):
     rec.set_metric("c", 3)
     assert "c" not in s.metrics  # 快照不隨後續記錄變動
     assert rec.snapshot().metrics["a"] == 1
-
-
-def test_track_success_records_success(rec, clock):
-    with rec.track():
-        assert rec.snapshot().in_progress_since == 1000.0
-        clock.advance(3)
-    s = rec.snapshot()
-    assert s.last_success_at == 1003.0 and s.in_progress_since is None
-
-
-def test_track_exception_records_and_reraises(rec):
-    with pytest.raises(ValueError, match="oops"):
-        with rec.track():
-            raise ValueError("oops")
-    s = rec.snapshot()
-    assert s.last_error_reason == "exception"
-    assert s.last_error_message == "oops"
-    assert s.in_progress_since is None and s.last_success_at is None
-
-
-def test_track_exception_message_masked(rec):
-    with pytest.raises(RuntimeError):
-        with rec.track():
-            raise RuntimeError("fail rtsp://a:b@h/x")
-    assert rec.snapshot().last_error_message == "fail rtsp://***@h/x"
-
-
-def test_track_exception_with_failing_str_reraises_original(rec):
-    class E(Exception):
-        def __str__(self):
-            raise RuntimeError("str boom")
-
-    with pytest.raises(E):
-        with rec.track():
-            raise E()
-    s = rec.snapshot()
-    assert s.last_error_reason == "exception" and s.last_error_message is None
 
 
 def test_uses_monotonic_clock_only(clock, logger, monkeypatch):

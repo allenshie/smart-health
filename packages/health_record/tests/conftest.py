@@ -45,6 +45,13 @@ def logger(log_handler: ListHandler) -> logging.Logger:
     return log
 
 
+@pytest.fixture
+def rec(clock, logger):
+    from smart_health_record import NodeRecorder
+
+    return NodeRecorder("n1", clock, logger)
+
+
 class FakeWallClock:
     """可手動調整的假 wall clock（含時區）。"""
 

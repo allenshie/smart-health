@@ -64,6 +64,10 @@ class _Tracker:
         elif issubclass(exc_type, Exception):
             # str(exc) 失敗時以無訊息方式記錄（_safe_message 會吞掉例外）
             self._rec.record_error("exception", exc)
+        else:
+            # 取消（asyncio.CancelledError）或 Ctrl-C 等 BaseException：工作沒有完成也不算失敗，
+            # 只清除進行中狀態，避免殘留成假的 stuck
+            self._rec._clear_in_progress()
         return False  # 原例外原樣往外拋
 
 
@@ -100,6 +104,14 @@ class NodeRecorder:
             return reason
         self._warn_once("reason", "invalid reason code replaced by invalid_reason")
         return INVALID_REASON
+
+    def _clear_in_progress(self) -> None:
+        """只清除進行中狀態，不記成功或錯誤；供 track() 遇到 BaseException 時使用。"""
+        try:
+            with self._lock:
+                self._in_progress_since = None
+        except Exception:
+            pass
 
     # ---- 公開 API ----
     def record_start(self) -> None:
