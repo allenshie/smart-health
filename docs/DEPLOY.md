@@ -41,7 +41,7 @@ targets:
 - **設定錯誤時啟動會失敗**，並指出欄位路徑：格式錯誤、未知欄位、`id` 重複或格式錯誤、數值不是正數、`base_url` 不是 http 或 https，都會讓後端啟動失敗（`restart: unless-stopped` 會讓容器反覆重啟）。`docker compose -f deploy/docker-compose.yml logs health-app` 可看到 `ConfigError` 與欄位路徑。
 - 每個目標獨立拉取，慢或掛掉的目標不影響其他目標；後端不跟隨重新導向。
 - **`base_url` 不可含帳密**（例如 `http://user:pass@host`），否則啟動失敗。`/status` 與 `/topology` 不需要驗證，含帳密的網址也可能被 HTTP client 的 log 原樣印出。
-- **後端不使用環境變數的 proxy 設定**：`HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY` 與 `.netrc` 都不套用，一律直連 `base_url`。Docker daemon 設定了 proxy 而注入這些變數時，也不會把內網主機名的拉取送往 proxy。
+- **後端不使用環境變數的 proxy 設定**：`HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY` 與 `.netrc` 都不套用，一律直連 `base_url`。Docker daemon 設定了 proxy 而注入這些變數時，也不會把內網主機名的拉取送往 proxy。同樣的原因，`SSL_CERT_FILE`、`SSL_CERT_DIR` 也不會生效：連到使用私有 CA 的 https 目標時，無法用這兩個環境變數指定 CA。
 - **log：** 未另外設定 logging 時（例如直接以 `uvicorn` 啟動），後端輸出 INFO 以上的 log 到 stderr，格式為 `時間 level logger 名稱: 訊息`；`httpx`、`httpcore` 只輸出 WARNING 以上。以 `--log-config` 等方式已設定 root logger 時，沿用既有設定。
 - 被監控服務要提供 `GET /topology` 與 `GET /status`，格式見 `contract/README.md`；使用函式庫的服務見 `docs/INTEGRATION.md`。
 
