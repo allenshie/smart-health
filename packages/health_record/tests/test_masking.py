@@ -173,6 +173,8 @@ def test_other_pathological_inputs_are_fast():
         ("AUTHORIZATION: bearer xyz", "AUTHORIZATION: bearer ***"),
         ("Proxy-Authorization: Basic abc", "Proxy-Authorization: Basic ***"),
         ("Authorization: abc", "Authorization: ***"),
+        ("AUTHORİZATİON: Bearer abc", "AUTHORİZATİON: Bearer ***"),
+        ("authorizatİon: Bearer abc", "authorizatİon: Bearer ***"),
         ('"Authorization": "Bearer abc"', '"Authorization": "***"'),
         ("headers: Authorization: Bearer abc, next=1", "headers: Authorization: Bearer ***, next=1"),
         ("api-key=abc", "api-key=***"),

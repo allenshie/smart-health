@@ -17,6 +17,8 @@ _KEY_ONLY = re.compile(r"[\w\-]+")
 _SENSITIVE = re.compile(
     r"password|passwd|pwd|secret|token|api_key|apikey|authorization", re.IGNORECASE
 )
+# 判斷鍵是否為 Authorization：與 _SENSITIVE 同樣以 IGNORECASE 比對（不用 str.lower()，因為 İ 的小寫是兩個字元）。
+_AUTHORIZATION = re.compile(r"authorization", re.IGNORECASE)
 # Authorization 的 scheme：英文字母開頭的 token 字元（不含 = : 引號），後接同一行的空白（只列舉空格、tab、NBSP、全形空白，不含任何換行或分隔字元）。
 # 不符合時退回一般規則整段遮蔽，避免 scheme 位置吞掉內層敏感鍵值。
 # scheme 與空白字元集互斥，不會回溯成二次成長。
@@ -44,7 +46,7 @@ def _mask_key_values(text: str) -> str:
         if not _SENSITIVE.search(name):
             continue  # 不敏感：只越過分隔符，值仍可能是下一個鍵（x=password=abc）
         prefix_end = scan
-        if "authorization" in name.lower():
+        if _AUTHORIZATION.search(name):
             scheme = _AUTH_SCHEME.match(text, scan)
             if scheme is not None and _VALUE.match(text, scheme.end()) is not None:
                 prefix_end = scheme.end()  # 保留 scheme 與空白，只遮蔽憑證

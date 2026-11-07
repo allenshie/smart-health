@@ -237,12 +237,12 @@ scheme 與憑證之間只認空格、tab、NBSP、全形空白。憑證放在下
 
 ```
 
-### 4.7 關鍵字比對使用 Python 的不分大小寫比對
+### 4.7 已修正：關鍵字比對一律使用 `re.IGNORECASE`
 
-關鍵字以 Python `re` 的 `IGNORECASE` 與 `str.lower()` 比對，土耳其文帶點的 `İ` 等特殊大小寫字元可能比對不到。例如 `Authorization` 的 scheme 辨識使用 `str.lower()`，而 `İ` 的小寫是兩個字元，所以辨識失敗，只遮蔽第一段，憑證不遮蔽：
+這條原本是限制，現已修正，保留在此供對照。Authorization 的辨識原本使用 `str.lower()`，而土耳其文帶點的 `İ` 的小寫是兩個字元，scheme 辨識失敗，憑證不會被遮蔽（舊輸出為 `AUTHORİZATİON: *** abc`）。現在 `authorization` 與 `_SENSITIVE` 一樣，以 `re.IGNORECASE` 編譯的 regex 比對，`AUTHORİZATİON` 能保留 scheme、正確遮蔽憑證：
 
 ```python
 >>> mask_text("AUTHORİZATİON: Bearer abc")
-'AUTHORİZATİON: *** abc'
+'AUTHORİZATİON: Bearer ***'
 
 ```
