@@ -2,10 +2,10 @@
 from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
 from .safelog import LogBuffer
+from .schema import MAX_MESSAGE_LENGTH
 from .tracker import TransitionTracker
 
 MAX_REPORTED_TRANSITIONS = 50
-MAX_MESSAGE_LENGTH = 200
 
 
 class PublishedRound:

@@ -17,6 +17,7 @@ from .evaluator import apply_rules
 from .recorder import NodeRecorder
 from .safelog import CallableGuard, LogBuffer, describe_exception
 from .published import PublishedRound, build_published
+from .schema import SCHEMA_VERSION
 from .tracker import TransitionTracker
 from .topology import (
     LaneSpec,
@@ -31,8 +32,6 @@ from .topology import (
     topological_order,
     validate_graph,
 )
-
-SCHEMA_VERSION = 1
 
 
 def _local_now() -> datetime:

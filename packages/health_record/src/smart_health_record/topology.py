@@ -9,8 +9,9 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
+from .schema import REASON_PATTERN, REASON_RE, SCHEMA_VERSION
+
 _ID_RE = re.compile(r"[a-z][a-z0-9_-]*")
-_REASON_RE = re.compile(r"[a-z][a-z0-9_]*")
 
 
 @dataclass(frozen=True)
@@ -57,8 +58,8 @@ def check_label(value: Any, what: str) -> str:
 
 
 def check_reason_code(value: Any, what: str) -> str:
-    if not isinstance(value, str) or not _REASON_RE.fullmatch(value):
-        raise ValueError(f"{what} 格式錯誤，需符合 [a-z][a-z0-9_]*")
+    if not isinstance(value, str) or not REASON_RE.fullmatch(value):
+        raise ValueError(f"{what} 格式錯誤，需符合 {REASON_PATTERN}")
     return value
 
 
@@ -169,7 +170,7 @@ def build_topology(service: str, instance: str, lanes: Sequence[LaneSpec],
         for n in nodes
     ]
     return {
-        "schema_version": 1,
+        "schema_version": SCHEMA_VERSION,
         "service": service,
         "instance": instance,
         "topology_version": topology_version(lane_list, node_list),

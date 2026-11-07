@@ -1,7 +1,8 @@
 """敏感資訊遮蔽（規格書 4.4）。只使用標準函式庫。"""
 import re
 
-MAX_TEXT_LENGTH = 200
+from .schema import MAX_MESSAGE_LENGTH as MAX_TEXT_LENGTH
+
 MASK = "***"
 
 # scheme://userinfo@host：userinfo 取到最後一個 @（密碼可能含 @），不跨越 / ? # 與空白

@@ -7,15 +7,13 @@
 """
 import logging
 import math
-import re
 import threading
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Callable, Mapping, Optional
 
 from .masking import mask_text
-
-_REASON_RE = re.compile(r"[a-z][a-z0-9_]*")
+from .schema import REASON_RE
 INVALID_REASON = "invalid_reason"
 
 
@@ -100,7 +98,7 @@ class NodeRecorder:
             pass
 
     def _valid_reason(self, reason: Any) -> str:
-        if isinstance(reason, str) and _REASON_RE.fullmatch(reason):
+        if isinstance(reason, str) and REASON_RE.fullmatch(reason):
             return reason
         self._warn_once("reason", "invalid reason code replaced by invalid_reason")
         return INVALID_REASON
