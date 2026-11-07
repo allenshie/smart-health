@@ -1,40 +1,16 @@
+"""Poller 拉取行為：連線代碼、架構重取、逾時與目標之間互不影響。"""
+
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
-import logging
 import time
 
 import pytest
+from poller_support import conn, reaches, running
 from support import make_config, wait_until
 
-from smart_health_backend.poller import Poller
-from smart_health_backend.store import TargetStore
-
-
 pytestmark = pytest.mark.anyio
-
-
-@contextlib.asynccontextmanager
-async def running(config, network):
-    store = TargetStore(config)
-    async with network.client() as client:
-        poller = Poller(config, store, client)
-        task = asyncio.create_task(poller.run())
-        try:
-            yield store, poller
-        finally:
-            await poller.stop()
-            await asyncio.wait_for(task, 2)
-
-
-def conn(store, tid="t1"):
-    return store.get_view(tid).connection
-
-
-async def reaches(store, connection, tid="t1"):
-    await wait_until(lambda: conn(store, tid) == connection)
 
 
 async def test_connection_unknown_before_first_poll(network, make_service):
@@ -291,21 +267,6 @@ async def test_interval_subtracts_request_time(network, make_service):
     assert all(0.18 <= g < 0.26 for g in gaps), gaps
 
 
-async def test_stop_cancels_all_tasks(network, make_service):
-    svc = make_service()
-    svc.mode = "hang"
-    network.add("t1", svc)
-    config = make_config(["t1"], timeout=5)
-    store = TargetStore(config)
-    async with network.client() as client:
-        poller = Poller(config, store, client)
-        task = asyncio.create_task(poller.run())
-        await wait_until(lambda: svc.count("/topology") >= 1)
-        await asyncio.wait_for(poller.stop(), 1)
-        await asyncio.wait_for(task, 1)
-        assert task.done()
-
-
 async def test_transitions_collected_through_poller(network, make_service):
     svc = make_service()
     network.add("t1", svc)
@@ -323,119 +284,6 @@ async def test_many_targets_independent(network, make_service, n):
     async with running(make_config(hosts), network) as (store, _):
         for h in hosts:
             await reaches(store, "online", h)
-
-
-def poll_tasks() -> list[asyncio.Task]:
-    return [t for t in asyncio.all_tasks() if t.get_name().startswith("poll-") and not t.done()]
-
-
-async def test_stop_before_run_leaves_no_tasks(network, make_service):
-    network.add("t1", make_service())
-    config = make_config(["t1"])
-    async with network.client() as client:
-        poller = Poller(config, TargetStore(config), client)
-        run_task = asyncio.create_task(poller.run())
-        await poller.stop()  # run 尚未開始執行
-        await asyncio.wait_for(run_task, 1)
-        await asyncio.sleep(0)
-        assert poll_tasks() == []
-
-
-async def test_cancelled_run_cleans_up_tasks(network, make_service):
-    network.add("t1", make_service())
-    config = make_config(["t1"])
-    async with network.client() as client:
-        poller = Poller(config, TargetStore(config), client)
-        run_task = asyncio.create_task(poller.run())
-        await wait_until(lambda: len(poll_tasks()) == 1)
-        run_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await run_task
-        assert poll_tasks() == []
-
-
-async def test_run_twice_raises_and_keeps_single_set(network, make_service):
-    network.add("t1", make_service())
-    config = make_config(["t1"])
-    async with network.client() as client:
-        poller = Poller(config, TargetStore(config), client)
-        run_task = asyncio.create_task(poller.run())
-        await wait_until(lambda: len(poll_tasks()) == 1)
-        with pytest.raises(RuntimeError):
-            await poller.run()
-        assert len(poll_tasks()) == 1
-        await poller.stop()
-        await asyncio.wait_for(run_task, 1)
-        assert poll_tasks() == []
-
-
-async def test_run_after_stop_returns_immediately(network, make_service):
-    network.add("t1", make_service())
-    config = make_config(["t1"])
-    async with network.client() as client:
-        poller = Poller(config, TargetStore(config), client)
-        run_task = asyncio.create_task(poller.run())
-        await wait_until(lambda: len(poll_tasks()) == 1)
-        await poller.stop()
-        await asyncio.wait_for(run_task, 1)
-        await asyncio.wait_for(poller.run(), 1)  # 停止後的 run 立刻返回，不建立 task
-        await asyncio.sleep(0)
-        assert poll_tasks() == []
-
-
-async def test_failure_handler_exception_does_not_end_target_task(network, make_service):
-    svc = make_service()
-    svc.mode = "http500"
-    network.add("t1", svc)
-    config = make_config(["t1"])
-    store = TargetStore(config)
-    original = store.apply_failure
-    calls = {"n": 0}
-
-    def flaky(tid, code):
-        calls["n"] += 1
-        if calls["n"] <= 2:
-            raise RuntimeError("store broke")
-        original(tid, code)
-
-    store.apply_failure = flaky
-    async with network.client() as client:
-        poller = Poller(config, store, client)
-        task = asyncio.create_task(poller.run())
-        try:
-            await reaches(store, "offline")  # 前兩次 apply_failure 拋例外後仍繼續
-            assert len(poll_tasks()) == 1
-        finally:
-            await poller.stop()
-            await task
-
-
-async def test_failure_logged_once_per_change_and_recovery(network, make_service, caplog):
-    svc = make_service()
-    svc.mode = "http500"
-    network.add("t1", svc)
-    with caplog.at_level(logging.INFO, logger="smart_health_backend"):
-        async with running(make_config(["t1"]), network) as (store, _):
-            await reaches(store, "offline")
-            await wait_until(lambda: svc.count("/topology") >= 5)
-            warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-            assert len(warnings) == 1
-            svc.mode = "ok"
-            await reaches(store, "online")
-            await asyncio.sleep(0)
-    infos = [r for r in caplog.records if r.levelno == logging.INFO]
-    assert len(infos) == 1
-
-
-async def test_failure_log_detail_has_no_newlines(network, make_service, caplog):
-    svc = make_service()
-    svc.status["nodes"]["evil\nnode"] = svc.status["nodes"]["ingest"]
-    network.add("t1", svc)
-    with caplog.at_level(logging.INFO, logger="smart_health_backend"):
-        async with running(make_config(["t1"]), network) as (store, _):
-            await reaches(store, "invalid_response")
-    assert caplog.records
-    assert all("\n" not in r.getMessage() for r in caplog.records)
 
 
 async def test_overflow_float_marks_invalid_response(network, make_service):
