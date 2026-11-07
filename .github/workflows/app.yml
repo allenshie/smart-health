@@ -6,6 +6,7 @@ on:
   push:
     paths:
       - "apps/**"
+      - "packages/**"
       - "contract/**"
       - "deploy/**"
       - "examples/**"
@@ -15,6 +16,7 @@ on:
   pull_request:
     paths:
       - "apps/**"
+      - "packages/**"
       - "contract/**"
       - "deploy/**"
       - "examples/**"

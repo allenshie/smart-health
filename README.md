@@ -94,7 +94,7 @@ docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
 | Workflow | 路徑過濾 | Jobs |
 |---|---|---|
 | `record.yml` | `packages/**`、`contract/**`、workflow 本身 | `ruff`、`test`（Python 3.10 與 3.11，含契約測試）、`build`（`python -m build` 加 `twine check`） |
-| `app.yml` | `apps/**`、`contract/**`、`deploy/**`、`examples/**`、`e2e/**`、`config/**`、workflow 本身 | `ruff`、`backend`、`examples`、`frontend`、`image`、`e2e` |
+| `app.yml` | `apps/**`、`packages/**`、`contract/**`、`deploy/**`、`examples/**`、`e2e/**`、`config/**`、workflow 本身 | `ruff`、`backend`、`examples`、`frontend`、`image`、`e2e` |
 
 兩個 workflow 都由 `push` 與 `pull_request` 觸發，且都**不發布**：沒有 PyPI、registry push 或 release 步驟，也不使用 secrets。PyPI 發布與建立遠端 repo 由使用者操作。
 
