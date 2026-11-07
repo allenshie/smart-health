@@ -1,8 +1,10 @@
 # smart_health 規格書
 
 - **狀態：** 定稿
-- **版本：** 1.2（2026-11-06）
+- **版本：** 1.3（2026-11-07）
 - **實作計畫：** [PLAN.md](PLAN.md)
+
+**1.3 變更摘要：** 依最終審查加入後端的回應大小上限 `max_response_bytes`（第 6、6.1 節）：被監控服務的回應超過上限時停止讀取，判為 `invalid_response`，避免單一服務的異常回應耗盡後端記憶體。
 
 **1.2 變更摘要：** 依驗收關卡 1 回饋補強第 4.4 節的遮蔽：`Authorization` 標頭保留 scheme、遮蔽憑證；關鍵字中的 `-` 和 `_` 視為相同。CI 加入 Python lint（ruff）；導入指南要列出遮蔽的已知限制。
 
@@ -320,6 +322,7 @@ poll_interval_s: 5        # 拉取與前端更新的間隔
 request_timeout_s: 2
 evaluation_stale_after_s: 10
 history_limit: 200
+max_response_bytes: 1048576   # 單次回應本文的上限（1 MiB）
 targets:
   - id: mock-edge-a
     name: Mock Edge A
@@ -334,6 +337,7 @@ targets:
 - 先取 `/topology`，之後定期取 `/status`。
 - `/status` 的 `topology_version` 改變，或 `started_at` 改變（服務重啟）時，重新取 `/topology`。
 - 不跟隨重新導向。
+- 回應本文超過 `max_response_bytes` 時立即停止讀取，不把整份內容讀入記憶體，本輪判為 `invalid_response`。`Content-Length` 已超過上限時不讀取本文。`request_timeout_s` 涵蓋包含讀取本文在內的整個請求。
 
 每個目標的連線狀態：
 
@@ -344,7 +348,7 @@ targets:
 | `offline` | 連線失敗或逾時，或回應不是 2xx |
 | `stale` | 有回應，但 `evaluation_age_s` 超過 `evaluation_stale_after_s` |
 | `incompatible` | `schema_version` 不受支援 |
-| `invalid_response` | 回應不是 JSON，或不符合契約 |
+| `invalid_response` | 回應不是 JSON、不符合契約，或本文超過 `max_response_bytes` |
 
 不是 `online` 時，保留上一次的架構讓畫面維持結構，但**所有節點一律回傳 `gray`**，不能保留上一次的顏色，也不回傳舊狀態。每個節點的內容固定為：
 
