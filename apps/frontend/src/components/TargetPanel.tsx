@@ -35,7 +35,8 @@ export function TargetPanel({ targetId, intervalMs, suppressError }: TargetPanel
 
   const toggle = useCallback((id: string) => setSelectedId((cur) => (cur === id ? null : id)), []);
   // 後端請求失敗時沒有人知道最後的顏色是否仍成立：保留架構，燈號一律轉灰（SPEC §7.1 第 3 點的精神）。
-  const online = detail?.connection === "online" && error === null && !suppressError;
+  const backendError = error !== null || suppressError;
+  const online = detail?.connection === "online" && !backendError;
 
   return (
     <>
@@ -52,6 +53,7 @@ export function TargetPanel({ targetId, intervalMs, suppressError }: TargetPanel
               topology={topology}
               nodes={detail.nodes}
               online={online}
+              backendError={backendError}
               selectedId={selectedId}
               onSelect={toggle}
             />

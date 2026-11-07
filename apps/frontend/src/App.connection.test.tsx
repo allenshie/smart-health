@@ -123,4 +123,38 @@ describe("App 連線、錯誤", () => {
     expect(screen.getAllByRole("button").every((b) => b.getAttribute("data-color") === "gray")).toBe(true);
     expect(mockTarget.mock.calls.length).toBeGreaterThan(1); // 詳細資料仍成功更新
   });
+
+  it("shows 未知 as lamp text on backend error, keeps the detail, and recovers", async () => {
+    serve(targetDetail());
+    render(<App />);
+    await advance(0);
+    fireEvent.click(lamp("infer"));
+    expect(lamp("infer").textContent).toContain("ok");
+
+    mockTarget.mockRejectedValue(new TypeError("Failed to fetch"));
+    await advance(INTERVAL_MS);
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    for (const b of screen.getAllByRole("button")) {
+      expect(b.getAttribute("data-color")).toBe("gray");
+      expect(b.textContent).toContain("未知");
+      expect(b.textContent).not.toContain("ok");
+    }
+    // 詳細面板保留最後的值
+    expect(detailRegion()?.textContent).toContain("狀態ok");
+
+    serve(targetDetail());
+    await advance(INTERVAL_MS);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(lamp("infer").textContent).toContain("ok");
+    expect(lamp("infer").textContent).not.toContain("未知");
+  });
+
+  it("shows 未知 as lamp text when only the target list fails", async () => {
+    serve(targetDetail());
+    render(<App />);
+    await advance(0);
+    mockTargets.mockRejectedValue(new TypeError("Failed to fetch"));
+    await advance(INTERVAL_MS);
+    expect(lamp("ingest").textContent).toContain("未知");
+  });
 });

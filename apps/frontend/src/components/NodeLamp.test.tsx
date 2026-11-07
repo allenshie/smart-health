@@ -35,6 +35,12 @@ describe("NodeLamp", () => {
     },
   );
 
+  it("shows 未知 and gray on backend error even when the node has a state", () => {
+    const { button } = renderLamp({ node: nodeView({ state: "ok" }), backendError: true, online: false });
+    expect(screen.getByRole("button", { name: "Infer 未知" })).toBe(button);
+    expect(button.getAttribute("data-color")).toBe("gray");
+  });
+
   it("shows 未知 in gray when the node has no status", () => {
     const { button } = renderLamp({ node: undefined });
     expect(screen.getByRole("button", { name: "Infer 未知" })).toBe(button);
