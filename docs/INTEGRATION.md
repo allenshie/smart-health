@@ -20,7 +20,7 @@ python -m pip install packages/health_record/dist/smart_health_record-0.1.0-py3-
 pip install smart-health-record==0.1.0          # 發布後才可用
 ```
 
-匯入名稱是 `smart_health_record`，只公開 `HealthMonitor`、`StatusServer`、`mask_text` 與 `__version__`（`NodeRecorder` 由 `HealthMonitor.add_node` 回傳）。
+匯入名稱是 `smart_health_record`，只公開 `HealthMonitor`、`NodeRecorder`、`StatusServer`、`mask_text` 與 `__version__`。`NodeRecorder` 由 `HealthMonitor.add_node` 回傳，不需自行建立。
 
 ## 2. 最小範例
 
