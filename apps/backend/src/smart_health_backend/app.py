@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from .config import AppConfig, load_config
+from .logging_setup import configure_logging
 from .poller import Poller
 from .routes import router
 from .store import TargetStore
@@ -43,10 +44,12 @@ def create_app(
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
     """建立應用程式。transport 僅供測試注入假網路。"""
+    configure_logging()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        client = httpx.AsyncClient(transport=transport)
+        # trust_env=False：不套用環境變數的 proxy 與 .netrc，內網主機名一律直連
+        client = httpx.AsyncClient(transport=transport, trust_env=False)
         run_task: asyncio.Task[None] | None = None
         poller: Poller | None = None
         try:

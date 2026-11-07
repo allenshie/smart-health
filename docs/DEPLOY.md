@@ -33,13 +33,16 @@ targets:
 | `max_response_bytes` | `1048576` | 單次回應本文的上限（位元組），必須是正整數。`Content-Length` 已超過上限時不讀本文；讀取中超過上限就停止讀取。兩者都判為 `invalid_response` |
 | `targets[].id` | 必填 | 符合 `^[a-z][a-z0-9_-]*$`，不可重複 |
 | `targets[].name` | 必填 | 畫面顯示名稱，非空字串 |
-| `targets[].base_url` | 必填 | 被監控服務的位址（`http` 或 `https`，含主機，不可含 query 或 fragment）；後端會在後面加上 `/topology` 與 `/status` |
+| `targets[].base_url` | 必填 | 被監控服務的位址（`http` 或 `https`，含主機，不可含 query、fragment 或帳密）；後端會在後面加上 `/topology` 與 `/status` |
 
 重點：
 
 - **`base_url` 只存在後端**，不會出現在任何 API 回應，前端也看不到。錯誤也只以連線代碼（`offline`、`stale` 等）呈現，不回傳原始錯誤字串。
 - **設定錯誤時啟動會失敗**，並指出欄位路徑：格式錯誤、未知欄位、`id` 重複或格式錯誤、數值不是正數、`base_url` 不是 http 或 https，都會讓後端啟動失敗（`restart: unless-stopped` 會讓容器反覆重啟）。`docker compose -f deploy/docker-compose.yml logs health-app` 可看到 `ConfigError` 與欄位路徑。
 - 每個目標獨立拉取，慢或掛掉的目標不影響其他目標；後端不跟隨重新導向。
+- **`base_url` 不可含帳密**（例如 `http://user:pass@host`），否則啟動失敗。`/status` 與 `/topology` 不需要驗證，含帳密的網址也可能被 HTTP client 的 log 原樣印出。
+- **後端不使用環境變數的 proxy 設定**：`HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY` 與 `.netrc` 都不套用，一律直連 `base_url`。Docker daemon 設定了 proxy 而注入這些變數時，也不會把內網主機名的拉取送往 proxy。
+- **log：** 未另外設定 logging 時（例如直接以 `uvicorn` 啟動），後端輸出 INFO 以上的 log 到 stderr，格式為 `時間 level logger 名稱: 訊息`；`httpx`、`httpcore` 只輸出 WARNING 以上。以 `--log-config` 等方式已設定 root logger 時，沿用既有設定。
 - 被監控服務要提供 `GET /topology` 與 `GET /status`，格式見 `contract/README.md`；使用函式庫的服務見 `docs/INTEGRATION.md`。
 
 ## 2. compose

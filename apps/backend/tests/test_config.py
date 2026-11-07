@@ -157,3 +157,12 @@ def test_max_response_bytes_can_be_one(tmp_path):
 def test_invalid_max_response_bytes_rejected(tmp_path, value):
     with pytest.raises(ConfigError, match="^max_response_bytes: 必須是正整數"):
         load_config(write(tmp_path, BASE + f"max_response_bytes: {value}\n"))
+
+
+@pytest.mark.parametrize(
+    "url", ["http://user:pass@h:1", "http://user@h:1", "http://:pass@h:1", "https://@h"]
+)
+def test_base_url_with_credentials_rejected(tmp_path, url):
+    text = BASE.replace("http://a:1", f"'{url}'")
+    with pytest.raises(ConfigError, match=r"^targets\[0\]\.base_url: 不可含帳密$"):
+        load_config(write(tmp_path, text))

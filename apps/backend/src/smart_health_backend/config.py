@@ -111,6 +111,9 @@ def _parse_target(raw: Any, index: int, seen: set[str]) -> TargetConfig:
         raise ConfigError(f"{path}.base_url: 格式無效") from exc
     if parts.scheme not in ("http", "https") or not host:
         raise ConfigError(f"{path}.base_url: 必須是含主機的 http 或 https 位址")
+    if parts.username is not None or parts.password is not None:
+        # /status 不需要驗證；含帳密的網址可能被 httpx 的 log 原樣印出
+        raise ConfigError(f"{path}.base_url: 不可含帳密")
     seen.add(target_id)
     return TargetConfig(id=target_id, name=name, base_url=base_url)
 
