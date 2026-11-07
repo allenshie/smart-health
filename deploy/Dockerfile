@@ -16,8 +16,9 @@ FROM python:3.11.15-slim-bookworm AS mock
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/opt/mock/lib:/opt/mock/examples/mock_service
-RUN groupadd --system --gid 10001 app \
-    && useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
+# uid/gid 10001 超出系統帳號範圍，不加 --system（否則 useradd 會警告）
+RUN groupadd --gid 10001 app \
+    && useradd --uid 10001 --gid app --no-create-home --no-log-init --shell /usr/sbin/nologin app
 # 函式庫沒有依賴，從 src 載入就是真實的 smart-health-record（SPEC §8）
 COPY packages/health_record/src /opt/mock/lib
 COPY examples/mock_service /opt/mock/examples/mock_service
@@ -29,14 +30,17 @@ USER 10001:10001
 FROM python:3.11.15-slim-bookworm AS app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_ROOT_USER_ACTION=ignore
 WORKDIR /app
 # 只安裝鎖定版本且驗證 hash 的 runtime 依賴；後端程式本身不經 pip 建置，避免抓取未鎖定的建置工具
+# 以 root 安裝到系統 site-packages 是刻意的（映像檔內沒有 venv，執行時改用非 root），所以關閉 pip 的 root 警告
 COPY apps/backend/requirements.lock /tmp/requirements.lock
 RUN pip install --no-cache-dir --require-hashes -r /tmp/requirements.lock \
     && rm /tmp/requirements.lock
-RUN groupadd --system --gid 10001 app \
-    && useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
+# uid/gid 10001 超出系統帳號範圍，不加 --system（否則 useradd 會警告）
+RUN groupadd --gid 10001 app \
+    && useradd --uid 10001 --gid app --no-create-home --no-log-init --shell /usr/sbin/nologin app
 COPY apps/backend/src/smart_health_backend /app/smart_health_backend
 COPY --from=frontend /src/apps/frontend/dist /app/static
 ENV PYTHONPATH=/app \
