@@ -46,8 +46,10 @@ def _send_get(port, timeout=2.0):
 def test_hang_threads_released_after_client_disconnects(raw_mock):
     mock = raw_mock("hang")
     pid = mock.proc.popen.pid
-    wait_until(lambda: _thread_count(pid) <= 2, 5.0, what="啟動後執行緒穩定")
-    baseline = _thread_count(pid)
+    # 基準值固定為閒置時的執行緒數（主執行緒與 serve_forever），不在此刻重新讀取：
+    # fixture 確認 port 開啟的那條連線稍後才被 accept，重讀可能多算它那條短暫的 handler
+    baseline = 2
+    wait_until(lambda: _thread_count(pid) == baseline, 5.0, what="啟動後執行緒穩定")
     clients = [_send_get(mock.port) for _ in range(20)]
     wait_until(lambda: _thread_count(pid) >= baseline + 20, 5.0, what="每個請求一條 handler")
     time.sleep(0.1)
