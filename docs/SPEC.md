@@ -1,8 +1,10 @@
 # smart_health 規格書
 
 - **狀態：** 定稿
-- **版本：** 1.3（2026-11-07）
+- **版本：** 1.4（2026-11-07）
 - **實作計畫：** [PLAN.md](PLAN.md)
+
+**1.4 變更摘要：** 依最終審查驗收，第 10 節 App 的 CI 路徑加入 `packages/**`：後端整合測試、模擬服務、mock 映像檔與 e2e 都直接使用函式庫原始碼，函式庫改動也要觸發。
 
 **1.3 變更摘要：** 依最終審查加入後端的回應大小上限 `max_response_bytes`（第 6、6.1 節）：被監控服務的回應超過上限時停止讀取，判為 `invalid_response`，避免單一服務的異常回應耗盡後端記憶體。
 
@@ -526,7 +528,7 @@ smart_health/
 - CI 依路徑分開：
   - `packages/**`、`contract/**`：函式庫測試（Python 3.10、3.11），build，`twine check`。
   - Python lint：用固定版本的 ruff（0.8.4）檢查 `packages`、`contract`、`examples`、`apps`，兩個 workflow 都執行。
-  - `apps/**`、`contract/**`、`deploy/**`、`examples/**`、`e2e/**`：後端測試、前端 lint 和測試和建置、映像檔建置、e2e。
+  - `apps/**`、`contract/**`、`packages/**`、`deploy/**`、`examples/**`、`e2e/**`：後端測試、前端 lint 和測試和建置、映像檔建置、e2e。
 - CI 不自動發布。**PyPI 發布和建立遠端 repo 都由使用者操作。**
 
 ## 11. 驗收標準
