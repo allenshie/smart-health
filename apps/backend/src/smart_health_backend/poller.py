@@ -93,7 +93,8 @@ class Poller:
             self._note_code(target.id, failure.code, failure)
             self._store.apply_failure(target.id, failure.code)
         except Exception:
-            log.exception("目標 %s 拉取時發生未預期錯誤", target.id)
+            if self._last_code.get(target.id) != "offline":  # traceback 只在代碼改變時輸出，避免每輪洗版
+                log.exception("目標 %s 拉取時發生未預期錯誤", target.id)
             self._note_code(target.id, "offline", None)
             self._store.apply_failure(target.id, "offline")
 
@@ -127,8 +128,9 @@ class Poller:
         self._started_at[tid] = status.started_at
         stale = status.evaluation_age_s > self._config.evaluation_stale_after_s
         connection = "stale" if stale else "online"
-        self._note_code(tid, connection, _PollFailure("stale", "評估過久未更新") if stale else None)
         self._store.apply_status(tid, status, connection)
+        # 寫入成功後才記錄代碼：apply_status 拋例外時不能誤記「已恢復 online」
+        self._note_code(tid, connection, _PollFailure("stale", "評估過久未更新") if stale else None)
 
     def _adopt_topology(self, tid: str, topology: TopologyDoc) -> None:
         self._store.set_topology(tid, topology)

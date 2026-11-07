@@ -38,3 +38,24 @@ async def test_failure_log_detail_has_no_newlines(network, make_service, caplog)
             await reaches(store, "invalid_response")
     assert caplog.records
     assert all("\n" not in r.getMessage() for r in caplog.records)
+
+
+async def test_apply_status_failure_not_logged_as_recovery(network, make_service, caplog):
+    """apply_status 拋例外時不能記「已恢復 online」，traceback 也只在代碼改變時輸出一次。"""
+    svc = make_service()
+    network.add("t1", svc)
+    config = make_config(["t1"])
+    with caplog.at_level(logging.INFO, logger="smart_health_backend"):
+        async with running(config, network) as (store, _):
+            calls = {"n": 0}
+
+            def broken(*_args):
+                calls["n"] += 1
+                raise RuntimeError("store broke")
+
+            store.apply_status = broken
+            await wait_until(lambda: calls["n"] >= 5)
+    records = [r for r in caplog.records if r.name.startswith("smart_health_backend")]
+    assert not [r for r in records if "恢復" in r.getMessage()]
+    assert len([r for r in records if r.exc_info is not None]) == 1
+    assert len([r for r in records if r.levelno == logging.WARNING]) == 1
