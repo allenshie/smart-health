@@ -121,6 +121,12 @@ class Responder:
         return 200, json.dumps(body, ensure_ascii=False).encode("utf-8")
 
 
+class Server(ThreadingHTTPServer):
+    # socketserver 預設 backlog 只有 5：短時間湧入多條連線（例如 hang 模式下多個逾時重試）時
+    # accept queue 會溢位，Linux 丟棄握手的最後一個 ACK，伺服器要等 SYN-ACK 重送才 accept
+    request_queue_size = 128
+
+
 def make_handler(responder):
     class Handler(BaseHTTPRequestHandler):
         timeout = HANDLER_TIMEOUT_S
@@ -166,9 +172,9 @@ def main(argv=None):
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())
     try:
-        httpd = ThreadingHTTPServer((args.host, args.port),
-                                    make_handler(Responder(args.mode, args.change_interval_s, stop,
-                                                          args.hang_max_s)))
+        httpd = Server((args.host, args.port),
+                       make_handler(Responder(args.mode, args.change_interval_s, stop,
+                                              args.hang_max_s)))
     except OSError as exc:
         print(f"raw_mock 無法綁定 {args.host}:{args.port}：{exc}", file=sys.stderr, flush=True)
         return 2
