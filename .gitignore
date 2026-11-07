@@ -1,7 +1,6 @@
 config/targets.yaml
 .env
 node_modules
-.venv
 .venv*
 dist
 __pycache__/
