@@ -17,6 +17,8 @@ log = logging.getLogger(__name__)
 
 _T = TypeVar("_T")
 _DETAIL_LIMIT = 200
+# 要求不壓縮：上限計算的就是實際傳輸的位元組，也避免小型壓縮資料解壓後暴增
+_REQUEST_HEADERS = {"Accept-Encoding": "identity"}
 
 
 class _PollFailure(Exception):
@@ -138,14 +140,37 @@ class Poller:
         timeout = self._config.request_timeout_s
         url = target.base_url.rstrip("/") + path
         try:
-            # MockTransport 不套用 httpx timeout，所以外層一律再包 asyncio.timeout
+            # asyncio.timeout 是「request_timeout_s 涵蓋整個請求，含讀取本文」的保證（SPEC §6.1）：
+            # httpx 的 timeout 是逐階段計算，慢速滴漏（每次只送幾個位元組）的本文不會觸發它
             async with asyncio.timeout(timeout):
-                response = await self._client.get(url, follow_redirects=False, timeout=timeout)
+                body = await self._read_limited(url, path, timeout)
+        except _PollFailure:
+            raise
         except (TimeoutError, httpx.HTTPError, OSError) as exc:
             raise _PollFailure("offline", f"{path}: {type(exc).__name__}") from exc
-        if not response.is_success:
-            raise _PollFailure("offline", f"{path}: HTTP {response.status_code}")
         try:
-            return parse(response.content)
+            return parse(body)
         except ContractError as exc:
             raise _PollFailure(exc.code, f"{path}: {exc.detail}") from exc
+
+    async def _read_limited(self, url: str, path: str, timeout: float) -> bytes:
+        """串流讀取本文，超過 max_response_bytes 就停止（SPEC §6.1）。
+
+        失敗一律在 `async with` 內拋出，httpx 會關閉這條連線，不會放回連線池。
+        log 的 detail 只寫超過上限，不帶入本文內容。
+        """
+        limit = self._config.max_response_bytes
+        async with self._client.stream(
+            "GET", url, headers=_REQUEST_HEADERS, follow_redirects=False, timeout=timeout
+        ) as response:
+            if not response.is_success:  # 非 2xx 不讀本文
+                raise _PollFailure("offline", f"{path}: HTTP {response.status_code}")
+            declared = response.headers.get("content-length")
+            if declared is not None and declared.isdigit() and int(declared) > limit:
+                raise _PollFailure("invalid_response", f"{path}: Content-Length 超過上限")
+            body = bytearray()
+            async for chunk in response.aiter_bytes():
+                body += chunk
+                if len(body) > limit:  # 嚴格大於：剛好等於上限可接受
+                    raise _PollFailure("invalid_response", f"{path}: 本文超過上限")
+        return bytes(body)

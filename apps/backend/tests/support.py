@@ -31,6 +31,8 @@ class FakeService:
         self.requests: list[str] = []
         self.status_times: list[float] = []
         self.delay = 0.0  # 每個請求回應前的延遲秒數
+        # 自訂回應：回傳 Response 就直接使用，回傳 None 則走 mode 的預設行為
+        self.responder: Callable[[httpx.Request], httpx.Response | None] | None = None
 
     def count(self, path: str) -> int:
         return sum(1 for r in self.requests if r == path)
@@ -44,6 +46,10 @@ class FakeService:
             await asyncio.sleep(self.delay)
         if self.mode == "hang":
             await asyncio.sleep(3600)
+        if self.responder is not None:
+            custom = self.responder(request)
+            if custom is not None:
+                return custom
         if self.mode == "http500":
             return httpx.Response(500, json={"error": "boom"})
         if self.mode == "redirect":
@@ -88,12 +94,14 @@ def make_config(
     timeout: float = 0.05,
     stale: float = 10,
     history: int = 200,
+    max_bytes: int = 1048576,
 ) -> AppConfig:
     return AppConfig(
         poll_interval_s=interval,
         request_timeout_s=timeout,
         evaluation_stale_after_s=stale,
         history_limit=history,
+        max_response_bytes=max_bytes,
         targets=[TargetConfig(id=h, name=h.upper(), base_url=f"http://{h}:8000") for h in hosts],
     )
 

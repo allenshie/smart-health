@@ -19,8 +19,10 @@ DEFAULTS: dict[str, float | int] = {
     "request_timeout_s": 2,
     "evaluation_stale_after_s": 10,
     "history_limit": 200,
+    "max_response_bytes": 1048576,
 }
 _POSITIVE_NUMBERS = ("poll_interval_s", "request_timeout_s", "evaluation_stale_after_s")
+_POSITIVE_INTS = ("history_limit", "max_response_bytes")
 _TOP_KEYS = set(DEFAULTS) | {"targets"}
 _TARGET_KEYS = {"id", "name", "base_url"}
 
@@ -42,6 +44,7 @@ class AppConfig:
     request_timeout_s: float = 2
     evaluation_stale_after_s: float = 10
     history_limit: int = 200
+    max_response_bytes: int = 1048576  # 單次回應本文的上限（SPEC §6.1）
     targets: list[TargetConfig] = field(default_factory=list)
 
 
@@ -121,7 +124,8 @@ def parse_config(data: Any) -> AppConfig:
     values.update({k: data[k] for k in DEFAULTS if k in data})
     for key in _POSITIVE_NUMBERS:
         values[key] = _positive_number(values[key], key)
-    values["history_limit"] = _positive_int(values["history_limit"], "history_limit")
+    for key in _POSITIVE_INTS:
+        values[key] = _positive_int(values[key], key)
     if "targets" not in data:
         raise ConfigError("targets: 必填")
     raw_targets = data["targets"]

@@ -6,7 +6,9 @@ import pytest
 
 from smart_health_backend.config import ConfigError, load_config
 
-EXAMPLE = Path(__file__).resolve().parents[3] / "config" / "targets.example.yaml"
+ROOT = Path(__file__).resolve().parents[3]
+EXAMPLE = ROOT / "config" / "targets.example.yaml"
+SPEC = ROOT / "docs" / "SPEC.md"
 
 BASE = """
 poll_interval_s: 5
@@ -32,6 +34,7 @@ def test_example_config_is_valid():
     assert cfg.request_timeout_s == 2
     assert cfg.evaluation_stale_after_s == 10
     assert cfg.history_limit == 200
+    assert cfg.max_response_bytes == 1048576
     assert [t.id for t in cfg.targets] == ["mock-edge-a"]
     assert cfg.targets[0].base_url == "http://mock-edge-a:18081"
 
@@ -74,6 +77,7 @@ def test_defaults_when_top_level_numbers_missing(tmp_path):
     cfg = load_config(write(tmp_path, "targets: []\n"))
     assert (cfg.poll_interval_s, cfg.request_timeout_s) == (5, 2)
     assert (cfg.evaluation_stale_after_s, cfg.history_limit) == (10, 200)
+    assert cfg.max_response_bytes == 1048576
     assert cfg.targets == []
 
 
@@ -130,3 +134,26 @@ def test_duplicate_key_check_does_not_change_global_yaml(tmp_path):
     import yaml
 
     assert yaml.safe_load("a: 1\na: 2\n") == {"a": 2}
+
+
+def _spec_backend_example() -> str:
+    """取出 SPEC §6 的設定範例 YAML 區塊。"""
+    section = SPEC.read_text(encoding="utf-8").split("## 6. 後端", 1)[1]
+    return section.split("```yaml\n", 1)[1].split("```", 1)[0]
+
+
+def test_spec_example_config_loads(tmp_path):
+    cfg = load_config(write(tmp_path, _spec_backend_example()))
+    assert cfg.max_response_bytes == 1048576
+    assert [t.id for t in cfg.targets] == ["mock-edge-a"]
+
+
+def test_max_response_bytes_can_be_one(tmp_path):
+    cfg = load_config(write(tmp_path, BASE + "max_response_bytes: 1\n"))
+    assert cfg.max_response_bytes == 1
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "1.5", "true", "'1MiB'", "null", "1048576.0"])
+def test_invalid_max_response_bytes_rejected(tmp_path, value):
+    with pytest.raises(ConfigError, match="^max_response_bytes: 必須是正整數"):
+        load_config(write(tmp_path, BASE + f"max_response_bytes: {value}\n"))
