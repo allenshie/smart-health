@@ -16,12 +16,29 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * 單次 API 請求（含讀取本文）的逾時。後端只回傳記憶體內的資料，正常時遠低於此值；
+ * 沒有逾時的話，後端或網路掛住時 usePolling 永遠等不到結果，畫面會一直留著舊燈號。
+ */
+export const REQUEST_TIMEOUT_MS = 10_000;
+
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(path, { cache: "no-store" });
-  if (!res.ok) {
-    throw new ApiError(res.status);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(path, { cache: "no-store", signal: ctrl.signal });
+    if (!res.ok) {
+      throw new ApiError(res.status);
+    }
+    return (await res.json()) as T;
+  } catch (e) {
+    if (ctrl.signal.aborted) {
+      throw new Error("API 請求逾時");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
-  return (await res.json()) as T;
 }
 
 export function fetchConfig(): Promise<ConfigResponse> {

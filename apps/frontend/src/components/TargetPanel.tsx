@@ -11,7 +11,7 @@ import { TopologyView } from "./TopologyView";
 export interface TargetPanelProps {
   targetId: string;
   intervalMs: number;
-  /** 上層已經顯示後端錯誤時不再重複顯示。 */
+  /** 上層已經顯示後端錯誤時不再重複顯示，燈號同樣轉灰。 */
   suppressError: boolean;
 }
 
@@ -34,6 +34,8 @@ export function TargetPanel({ targetId, intervalMs, suppressError }: TargetPanel
   }
 
   const toggle = useCallback((id: string) => setSelectedId((cur) => (cur === id ? null : id)), []);
+  // 後端請求失敗時沒有人知道最後的顏色是否仍成立：保留架構，燈號一律轉灰（SPEC §7.1 第 3 點的精神）。
+  const online = detail?.connection === "online" && error === null && !suppressError;
 
   return (
     <>
@@ -49,7 +51,7 @@ export function TargetPanel({ targetId, intervalMs, suppressError }: TargetPanel
             <TopologyView
               topology={topology}
               nodes={detail.nodes}
-              online={detail.connection === "online"}
+              online={online}
               selectedId={selectedId}
               onSelect={toggle}
             />
