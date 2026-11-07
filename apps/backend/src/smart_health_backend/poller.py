@@ -41,6 +41,8 @@ class Poller:
         self._versions: dict[str, str] = {}
         self._started_at: dict[str, str] = {}
         self._last_code: dict[str, str] = {}
+        # 已輸出過未預期例外 traceback 的目標；成功一輪或回到 _PollFailure 時移除
+        self._unexpected: set[str] = set()
 
     async def run(self) -> None:
         """啟動全部目標的拉取，直到 stop() 或本協程被取消。
@@ -87,16 +89,23 @@ class Poller:
             await asyncio.sleep(max(0.0, interval - (loop.time() - started)))
 
     async def _poll_once(self, target: TargetConfig) -> None:
+        tid = target.id
         try:
             await self._round(target)
         except _PollFailure as failure:
-            self._note_code(target.id, failure.code, failure)
-            self._store.apply_failure(target.id, failure.code)
+            self._unexpected.discard(tid)
+            self._note_code(tid, failure.code, failure)
+            self._store.apply_failure(tid, failure.code)
         except Exception:
-            if self._last_code.get(target.id) != "offline":  # traceback 只在代碼改變時輸出，避免每輪洗版
-                log.exception("目標 %s 拉取時發生未預期錯誤", target.id)
-            self._note_code(target.id, "offline", None)
-            self._store.apply_failure(target.id, "offline")
+            # 同一段連續的未預期錯誤只輸出一次 traceback，避免每輪洗版；
+            # 不看連線代碼，所以目標原本就 offline 時也不會漏掉
+            if tid not in self._unexpected:
+                self._unexpected.add(tid)
+                log.exception("目標 %s 拉取時發生未預期錯誤", tid)
+            self._note_code(tid, "offline", None)
+            self._store.apply_failure(tid, "offline")
+        else:
+            self._unexpected.discard(tid)
 
     def _note_code(self, tid: str, code: str, failure: Exception | None) -> None:
         """連線代碼改變時才記 log：失敗記 warning，恢復 online 記一次 info。"""

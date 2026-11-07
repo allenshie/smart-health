@@ -59,3 +59,37 @@ async def test_apply_status_failure_not_logged_as_recovery(network, make_service
     assert not [r for r in records if "恢復" in r.getMessage()]
     assert len([r for r in records if r.exc_info is not None]) == 1
     assert len([r for r in records if r.levelno == logging.WARNING]) == 1
+
+
+async def test_unexpected_error_after_offline_logged_once_per_episode(network, make_service, caplog):
+    """先因連線失敗變 offline，之後 apply_status 每輪拋例外：traceback 仍要輸出一次。
+
+    成功一輪後再拋例外，算新的一次，要再輸出一次。
+    """
+    svc = make_service()
+    svc.mode = "http500"
+    network.add("t1", svc)
+    with caplog.at_level(logging.INFO, logger="smart_health_backend"):
+        async with running(make_config(["t1"]), network) as (store, _):
+            await reaches(store, "offline")
+            original = store.apply_status
+            calls = {"n": 0}
+
+            def broken(*_args):
+                calls["n"] += 1
+                raise RuntimeError("store broke")
+
+            def tracebacks():
+                return [r for r in caplog.records if r.exc_info is not None]
+
+            store.apply_status = broken
+            svc.mode = "ok"
+            await wait_until(lambda: calls["n"] >= 5)
+            assert len(tracebacks()) == 1
+
+            store.apply_status = original
+            await reaches(store, "online")
+            store.apply_status = broken
+            base = calls["n"]
+            await wait_until(lambda: calls["n"] >= base + 5)
+            assert len(tracebacks()) == 2
