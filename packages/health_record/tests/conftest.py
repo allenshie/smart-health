@@ -1,7 +1,19 @@
-"""測試共用的假 clock 與 logger 擷取工具。"""
-import logging
+"""測試共用的假 clock、logger 擷取工具與 HealthMonitor fixture。
 
-import pytest
+--import-mode=importlib 不會把測試目錄加入 sys.path，所以在這裡加入，
+讓測試可以 ``from monitor_support import ...``。
+"""
+import logging
+import sys
+import threading
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import pytest  # noqa: E402
+from monitor_support import Records  # noqa: E402
+
+from smart_health_record import HealthMonitor  # noqa: E402
 
 
 class FakeClock:
@@ -94,3 +106,50 @@ def build_edge(monitor, ffmpeg=lambda: True, mqtt=lambda: True):
 @pytest.fixture
 def edge_builder():
     return build_edge
+
+
+@pytest.fixture
+def records():
+    return Records()
+
+
+@pytest.fixture
+def log(records):
+    lg = logging.getLogger("test.smart_health_record.monitor")
+    lg.handlers = [records]
+    lg.setLevel(logging.DEBUG)
+    lg.propagate = False
+    return lg
+
+
+@pytest.fixture
+def make(clock, wall, log):
+    """建立監控器；teardown 一定停止執行緒。"""
+    created = []
+
+    def factory(instance="inst", **kw):
+        kw.setdefault("clock", clock)
+        kw.setdefault("wall_clock", wall)
+        kw.setdefault("logger", log)
+        m = HealthMonitor("edge", instance, **kw)
+        created.append(m)
+        return m
+
+    yield factory
+    for m in created:
+        m.stop()
+
+
+@pytest.fixture
+def gates():
+    """阻塞用 Event；teardown 一律釋放，避免殘留執行緒。"""
+    events = []
+
+    def new():
+        e = threading.Event()
+        events.append(e)
+        return e
+
+    yield new
+    for e in events:
+        e.set()
