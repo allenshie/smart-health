@@ -211,6 +211,19 @@ def test_rejects_bad_lane_node_or_dependency_id(
     assert not status_validator.is_valid(bad_transition_node)
 
 
+@pytest.mark.parametrize("bad", ["Bad Reason", "1reason", "", "camera-down", "_x"])
+def test_rejects_bad_transition_reason(status_validator, status_doc, bad):
+    status_doc["recent_transitions"][0]["reason"] = bad
+    assert not status_validator.is_valid(status_doc)
+
+
+@pytest.mark.parametrize("bad", ["Ingest", "1ingest", "", "bad node", "_ingest"])
+def test_rejects_bad_lane_parent(topology_validator, topology_doc, bad):
+    lane = next(ln for ln in topology_doc["lanes"] if ln["parent"] is not None)
+    lane["parent"] = bad
+    assert not topology_validator.is_valid(topology_doc)
+
+
 def test_instance_accepts_uppercase(status_validator, topology_validator, status_doc, topology_doc):
     status_doc["instance"] = "CamA-northbound-1"
     topology_doc["instance"] = "CamA-northbound-1"
