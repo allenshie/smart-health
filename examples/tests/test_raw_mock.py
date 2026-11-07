@@ -1,13 +1,16 @@
 """raw_mock：故意回傳不符合契約內容，驗證每個模式確實出現預期行為。"""
 import json
 import socket
+import subprocess
+import sys
 import time
 import urllib.error
+from pathlib import Path
 
 import pytest
 from jsonschema import Draft202012Validator
 
-from support import SCHEMAS, get_json, http_request, wait_until
+from support import RAW_MOCK, SCHEMAS, get_json, http_request, wait_until
 
 MODES = ["hang", "http_500", "invalid_json", "wrong_schema", "missing_nodes",
          "topology_change", "evaluation_stale"]
@@ -26,6 +29,60 @@ def test_hang_never_responds(raw_mock):
     for path in ("/topology", "/status"):
         with pytest.raises((TimeoutError, socket.timeout, urllib.error.URLError)):
             http_request(f"{mock.url}{path}", timeout=1.0)
+
+
+def _thread_count(pid):
+    """Linux：以 /proc/<pid>/task 計算程序的執行緒數。"""
+    return len(list(Path(f"/proc/{pid}/task").iterdir()))
+
+
+def _send_get(port, timeout=2.0):
+    sock = socket.create_connection(("127.0.0.1", port), timeout=timeout)
+    sock.sendall(b"GET /status HTTP/1.1\r\nHost: x\r\n\r\n")
+    return sock
+
+
+@pytest.mark.skipif(not Path("/proc/self/task").is_dir(), reason="需要 Linux 的 /proc")
+def test_hang_threads_released_after_client_disconnects(raw_mock):
+    mock = raw_mock("hang")
+    pid = mock.proc.popen.pid
+    wait_until(lambda: _thread_count(pid) <= 2, 5.0, what="啟動後執行緒穩定")
+    baseline = _thread_count(pid)
+    clients = [_send_get(mock.port) for _ in range(20)]
+    wait_until(lambda: _thread_count(pid) >= baseline + 20, 5.0, what="每個請求一條 handler")
+    time.sleep(0.1)
+    for sock in clients:  # 如同後端逾時後關閉連線
+        sock.close()
+    wait_until(lambda: _thread_count(pid) <= baseline, 3.0, what="執行緒回到基準值")
+
+
+def test_hang_max_s_closes_connection_without_response(raw_mock):
+    mock = raw_mock("hang", hang_max_s=1)
+    with _send_get(mock.port, timeout=5.0) as sock:
+        start = time.monotonic()
+        data = sock.recv(4096)  # 保持連線開啟，等伺服器關閉
+        elapsed = time.monotonic() - start
+    assert data == b""  # 沒有任何 HTTP 回應
+    assert 0.8 <= elapsed < 2.5, elapsed
+
+
+@pytest.mark.parametrize("value", ["0", "-1"])
+def test_hang_max_s_must_be_positive(value):
+    result = subprocess.run([sys.executable, str(RAW_MOCK), "--mode", "hang", "--port", "1",
+                             "--hang-max-s", value], capture_output=True, timeout=10)
+    assert result.returncode == 2
+    assert "--hang-max-s 必須大於 0" in result.stderr.decode()
+
+
+def test_idle_connection_without_request_is_closed(raw_mock):
+    """只連線不送請求的 client 不能讓 handler 永遠阻塞（handler timeout 10 秒）。"""
+    mock = raw_mock("http_500")
+    with socket.create_connection(("127.0.0.1", mock.port), timeout=15.0) as sock:
+        start = time.monotonic()
+        data = sock.recv(4096)
+        elapsed = time.monotonic() - start
+    assert data == b""
+    assert 9.0 <= elapsed < 13.0, elapsed
 
 
 def test_http_500(raw_mock):
