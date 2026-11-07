@@ -60,8 +60,7 @@ jobs:
       - uses: actions/setup-python@v5.6.0
         with:
           python-version: "3.11"
-      # pyproject 的 build-system 沒有鎖定 hatchling，最新版產生的 Metadata 2.5 會讓 twine 6.1.0 拒絕；
-      # 這裡固定 hatchling 1.27.0（Metadata 2.4）並用 --no-isolation 建置
-      - run: pip install build==1.2.2 twine==6.1.0 hatchling==1.27.0
-      - run: python -m build --no-isolation packages/health_record
+      # pyproject 的 build-system 鎖定 hatchling==1.27.0（Metadata 2.4）；較新版本產生的 Metadata 2.5 會讓 twine 6.1.0 拒絕
+      - run: pip install build==1.2.2 twine==6.1.0
+      - run: python -m build packages/health_record
       - run: twine check packages/health_record/dist/*

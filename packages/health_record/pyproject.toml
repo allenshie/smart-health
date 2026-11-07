@@ -1,11 +1,11 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling==1.27.0"]
 build-backend = "hatchling.build"
 
 [project]
 name = "smart-health-record"
 version = "0.1.0"
-description = "智慧倉儲各服務共用的健康狀態記錄函式庫（僅用標準函式庫）"
+description = "通用的服務健康狀態記錄函式庫：節點架構、狀態評估與 /topology、/status HTTP 端點（僅用標準函式庫）"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []

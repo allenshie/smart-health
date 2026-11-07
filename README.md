@@ -74,12 +74,12 @@ npm run lint && npm run typecheck && npm test && npm run build
 
 ```bash
 uv venv --python 3.11 .venv-build
-uv pip install --python .venv-build/bin/python build==1.2.2 twine==6.1.0 hatchling==1.27.0
-.venv-build/bin/python -m build --no-isolation packages/health_record
+uv pip install --python .venv-build/bin/python build==1.2.2 twine==6.1.0
+.venv-build/bin/python -m build packages/health_record
 .venv-build/bin/twine check packages/health_record/dist/*
 ```
 
-固定 `hatchling==1.27.0` 並用 `--no-isolation`，是因為 `pyproject.toml` 沒有鎖定 hatchling，較新版本產生的 Metadata 2.5 會被 `twine` 6.1.0 拒絕（`'2.5' is not a valid metadata version`）。
+兩個 `pyproject.toml` 的 build-system 鎖定 `hatchling==1.27.0`，因為較新版本產生的 Metadata 2.5 會被 `twine` 6.1.0 拒絕（`'2.5' is not a valid metadata version`）。升級 hatchling 時要一併確認 twine 是否支援新的 Metadata 版本。
 
 ### GitHub Actions workflow
 

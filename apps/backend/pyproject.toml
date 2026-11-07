@@ -1,11 +1,11 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling==1.27.0"]
 build-backend = "hatchling.build"
 
 [project]
 name = "smart-health-backend"
 version = "0.1.0"
-description = "智慧倉儲健康監控後端：定期拉取各服務的 /topology 與 /status"
+description = "健康監控後端：定期拉取各服務的 /topology 與 /status 並提供查詢 API"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.110,<1",
