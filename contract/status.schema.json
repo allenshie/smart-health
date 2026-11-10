@@ -13,6 +13,7 @@
     "instance": {"type": "string", "minLength": 1},
     "topology_version": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
     "started_at": {"$ref": "#/$defs/timestamp"},
+    "ready_at": {"anyOf": [{"$ref": "#/$defs/timestamp"}, {"type": "null"}]},
     "evaluated_at": {"anyOf": [{"$ref": "#/$defs/timestamp"}, {"type": "null"}]},
     "evaluation_age_s": {"type": "number", "minimum": 0},
     "nodes": {

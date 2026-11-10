@@ -236,3 +236,31 @@ def test_rejects_empty_instance(status_validator, topology_validator, status_doc
     topology_doc["instance"] = ""
     assert not status_validator.is_valid(status_doc)
     assert not topology_validator.is_valid(topology_doc)
+
+
+# ---------------------------------------------------------------- ready_at（SPEC 1.5）
+
+@pytest.mark.parametrize("name", STATUS_FIXTURES)
+def test_status_fixtures_include_ready_at(name):
+    assert "ready_at" in load(FIXTURES / name)
+
+
+def test_before_first_evaluation_ready_at_uses_library_format():
+    doc = load(FIXTURES / "status_before_first_evaluation.json")
+    assert doc["ready_at"] == "2026-11-05T10:00:00.000+08:00"
+
+
+def test_accepts_v14_status_without_ready_at(status_validator, status_doc):
+    status_doc.pop("ready_at", None)
+    status_validator.validate(status_doc)
+
+
+def test_accepts_null_ready_at(status_validator, status_doc):
+    status_doc["ready_at"] = None
+    status_validator.validate(status_doc)
+
+
+@pytest.mark.parametrize("bad", ["2026-11-05T10:00:00", "", 0, True, {"at": "x"}])
+def test_rejects_invalid_ready_at(status_validator, status_doc, bad):
+    status_doc["ready_at"] = bad
+    assert not status_validator.is_valid(status_doc)

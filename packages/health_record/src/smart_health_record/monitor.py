@@ -17,6 +17,7 @@ from .evaluator import apply_rules
 from .recorder import NodeRecorder
 from .safelog import CallableGuard, LogBuffer, describe_exception
 from .published import PublishedRound, build_published
+from .readiness import clamp_to_ready, pre_ready_result
 from .schema import SCHEMA_VERSION
 from .tracker import TransitionTracker
 from .topology import (
@@ -46,7 +47,8 @@ class HealthMonitor:
                  max_transitions: int = 200,
                  logger: Optional[logging.Logger] = None,
                  clock: Callable[[], float] = time.monotonic,
-                 wall_clock: Callable[[], datetime] = _local_now) -> None:
+                 wall_clock: Callable[[], datetime] = _local_now,
+                 wait_for_ready: bool = False) -> None:
         self._service = check_id(service, "service")
         self._instance = check_instance(instance)
         self._tick = check_positive(tick_interval_s, "tick_interval_s")
@@ -58,6 +60,7 @@ class HealthMonitor:
         self._logger = logger or logging.getLogger("smart_health_record")
         self._clock = clock
         self._wall_clock = wall_clock
+        self._wait_for_ready = bool(wait_for_ready)
 
         self._lock = threading.Lock()
         self._eval_lock = threading.Lock()
@@ -74,6 +77,9 @@ class HealthMonitor:
         self._started = False
         self._started_mono = 0.0
         self._started_at = ""
+        # 就緒時刻（_lock 保護）：wait_for_ready=False 時於開始時設為 start() 的時刻
+        self._ready_mono: Optional[float] = None
+        self._ready_at: Optional[str] = None
         self._topology: Dict[str, Any] = {}
         self._final_lanes: Tuple[LaneSpec, ...] = ()
         self._order: Tuple[str, ...] = ()
@@ -177,6 +183,8 @@ class HealthMonitor:
             tracker = TransitionTracker(self._max_transitions)
             self._final_lanes, self._topology, self._order = lanes, topology, order
             self._started_mono, self._started_at = started_mono, started_at
+            if not self._wait_for_ready:
+                self._ready_mono, self._ready_at = started_mono, started_at
             self._tracker = tracker
             self._started = True
 
@@ -199,6 +207,19 @@ class HealthMonitor:
             self._stop_event.set()
         if thread is not None and thread is not threading.current_thread():
             thread.join(self._STOP_JOIN_TIMEOUT_S)  # 逾時就放棄，callable 卡住不能拖住 stop()
+
+    def mark_ready(self) -> None:
+        """宣告已就緒（規格書 3.1、5.2）：只短暫取用 _lock，不碰評估鎖，不做 I/O。"""
+        with self._lock:
+            if not self._started:
+                raise RuntimeError("HealthMonitor 尚未開始")
+            if not self._wait_for_ready or self._ready_mono is not None:
+                return
+        ready_mono = self._clock()
+        ready_at = self._now_wall().isoformat(timespec="milliseconds")
+        with self._lock:
+            if self._ready_mono is None:  # 多個執行緒同時呼叫時以第一個為準
+                self._ready_mono, self._ready_at = ready_mono, ready_at
 
     def _run(self, stop: threading.Event) -> None:
         while not stop.is_set():
@@ -252,11 +273,24 @@ class HealthMonitor:
         return enabled, deps
 
     def _evaluate(self, logs: LogBuffer) -> None:
+        with self._lock:
+            ready = self._ready_mono
+        if ready is None:
+            # 就緒之前（第 3.1 節）：只判定 fatal，不呼叫 enabled、dependencies
+            snaps = {node_id: rec.snapshot() for node_id, rec in self._recorders.items()}
+            results = {node_id: pre_ready_result(snaps[node_id]) for node_id in self._nodes}
+            self._publish(results, snaps, logs)
+            return
         enabled, deps = self._resolve_callables(logs)
         # callable 結束後才取快照與時間，避免阻塞造成誤判
         snaps = {node_id: rec.snapshot() for node_id, rec in self._recorders.items()}
-        results = apply_rules(self._nodes, self._order, self._final_lanes, snaps, enabled,
-                              deps, now=self._clock(), started_at=self._started_mono)
+        # wait_for_ready=False 時 ready 就是 start()，且不取較晚時間，與 1.4 完全相同
+        rule_snaps = (
+            {node_id: clamp_to_ready(snap, ready) for node_id, snap in snaps.items()}
+            if self._wait_for_ready else snaps
+        )
+        results = apply_rules(self._nodes, self._order, self._final_lanes, rule_snaps, enabled,
+                              deps, now=self._clock(), started_at=ready)
         self._publish(results, snaps, logs)
 
     def _publish(self, results: Dict[str, Tuple[str, Optional[str], Optional[str]]],
@@ -284,6 +318,7 @@ class HealthMonitor:
             cache = self._cache
             version = self._topology["topology_version"]
             started_at, started_mono = self._started_at, self._started_mono
+            ready_at = self._ready_at
         base = cache.published_mono if cache is not None else started_mono
         age = round(max(0.0, self._clock() - base), 3)
         return {
@@ -292,6 +327,7 @@ class HealthMonitor:
             "instance": self._instance,
             "topology_version": version,
             "started_at": started_at,
+            "ready_at": ready_at,
             "evaluated_at": cache.evaluated_at if cache is not None else None,
             "evaluation_age_s": age,
             "nodes": copy.deepcopy(cache.nodes) if cache is not None else {},

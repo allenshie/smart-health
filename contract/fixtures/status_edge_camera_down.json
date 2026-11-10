@@ -4,6 +4,7 @@
   "instance": "CamA-northbound-1",
   "topology_version": "7dfe2a247c6b2a64",
   "started_at": "2026-11-05T10:00:00+08:00",
+  "ready_at": "2026-11-05T10:00:00+08:00",
   "evaluated_at": "2026-11-05T10:32:15+08:00",
   "evaluation_age_s": 0.4,
   "nodes": {
