@@ -142,7 +142,7 @@ docker compose -f deploy/docker-compose.dev.yml down
 
 | 檔案 | 內容 |
 |---|---|
-| `scenarios.spec.ts` | SPEC §8.2 的 12 個情境，驗證每個節點的狀態文字與顏色 |
+| `scenarios.spec.ts` | SPEC §8.2 的 14 個情境，驗證每個節點的狀態文字與顏色 |
 | `robustness.spec.ts` | raw_mock 7 個模式、`mock-edge-a` 停止與恢復、hang 不影響其他目標 |
 | `generic.spec.ts` | `mock-api` 的巢狀 lane |
 | `responsive.spec.ts` | 寬度 360px 時頁面不水平捲動 |

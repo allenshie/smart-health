@@ -4,8 +4,8 @@ import time
 from smart_health_record import HealthMonitor
 
 from ..context import SimContext
-from ..scenarios import (EDGE_MESSAGING_DOWN, EDGE_NO_FRAME, EDGE_SCENARIOS, FAKE_PASSWORD_TEXT,
-                         FAKE_RTSP_URL, STARTING)
+from ..scenarios import (EDGE_MESSAGING_DOWN, EDGE_NO_FRAME, EDGE_SCENARIOS, EDGE_WORKER_FATAL,
+                         FAKE_PASSWORD_TEXT, FAKE_RTSP_URL, STARTING, WAIT_FOR_READY_SCENARIOS)
 from ..settings import Settings
 from . import Built
 
@@ -20,7 +20,9 @@ def has_frame(scenario: str) -> bool:
 
 
 def build(settings: Settings, ctx: SimContext) -> Built:
-    monitor = HealthMonitor("edge", settings.instance, tick_interval_s=settings.tick_interval_s)
+    # loading、loading_fatal 模擬載入中的服務：建立時就等待就緒，切換到其他情境時由模擬器呼叫 mark_ready()
+    monitor = HealthMonitor("edge", settings.instance, tick_interval_s=settings.tick_interval_s,
+                            wait_for_ready=ctx.scenario in WAIT_FOR_READY_SCENARIOS)
     monitor.add_lane("main", "Main", sequential=True)
     monitor.add_lane("ingest-bg", "Ingest worker", parent="ingest")
     monitor.add_lane("stream-bg", "Stream output", parent="stream")
@@ -59,7 +61,7 @@ def build(settings: Settings, ctx: SimContext) -> Built:
         last_error = 0.0
         while not ctx.stopped:
             scenario = ctx.scenario
-            if scenario == "worker_fatal":
+            if scenario in EDGE_WORKER_FATAL:
                 if not fatal:
                     worker.set_fatal("worker_crashed", f"worker crashed: {FAKE_RTSP_URL}")
                     fatal = True

@@ -1,7 +1,9 @@
 """模擬器：管理 HealthMonitor、StatusServer 與模擬執行緒的生命週期。
 
-``starting`` 情境會把三者整組停掉再重建（函式庫沒有重置 API），綁定相同 port。
-其他情境只改 context 內的情境名稱，由模擬執行緒自行反應。
+``starting``、``loading``、``loading_fatal`` 情境會把三者整組停掉再重建（函式庫沒有重置 API），
+綁定相同 port；後兩者的 monitor 以 ``wait_for_ready=True`` 建立。
+其他情境只改 context 內的情境名稱，由模擬執行緒自行反應，並呼叫 ``mark_ready()``
+（``wait_for_ready=False`` 時不做任何事）。
 """
 import threading
 from types import ModuleType
@@ -10,7 +12,7 @@ from typing import List
 from smart_health_record import StatusServer
 
 from .context import SimContext
-from .scenarios import STARTING
+from .scenarios import REBUILD_SCENARIOS
 from .settings import Settings
 
 _JOIN_TIMEOUT_S = 5.0
@@ -71,10 +73,11 @@ class Simulator:
         if name not in self._profile.SCENARIOS:
             raise UnknownScenario(f"未知情境：{name}")
         with self._lock:
-            if name == STARTING:
+            if name in REBUILD_SCENARIOS:
                 self._rebuild(name)
             else:
                 self._runtime.ctx.set_scenario(name)
+                self._runtime.monitor.mark_ready()  # 離開 loading：宣告就緒，不重建
             self._scenario = name
 
     def _rebuild(self, scenario: str) -> None:

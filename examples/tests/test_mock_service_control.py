@@ -32,8 +32,8 @@ def test_unknown_scenario_and_invalid_json_return_400(mock_service):
     assert svc.scenario() == "normal"
 
 
-def test_edge_scenario_list_has_all_12():
-    assert len(set(EDGE_SCENARIOS)) == 12
+def test_edge_scenario_list_has_all_14():
+    assert len(set(EDGE_SCENARIOS)) == 14
 
 
 @pytest.mark.parametrize("sig", ["SIGTERM", "SIGINT"])

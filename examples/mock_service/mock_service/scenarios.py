@@ -6,16 +6,26 @@ FAKE_RTSP_URL = f"rtsp://admin:{FAKE_SECRET}@10.0.0.1/live"
 FAKE_PASSWORD_TEXT = f"password={FAKE_SECRET}"
 
 STARTING = "starting"
+LOADING = "loading"
+LOADING_FATAL = "loading_fatal"
 
-# 規格書 8.2 的 12 個情境
+# 以 wait_for_ready=True 重建、期間不呼叫 mark_ready() 的情境（規格書 8.2）
+WAIT_FOR_READY_SCENARIOS = frozenset({LOADING, LOADING_FATAL})
+# 切換時重建 monitor 與 server 的情境；其他情境只改 context
+REBUILD_SCENARIOS = frozenset({STARTING}) | WAIT_FOR_READY_SCENARIOS
+
+# 規格書 8.2 的 14 個情境
 EDGE_SCENARIOS = (
     "normal", "starting", "camera_down", "messaging_down", "stream_sink_down",
     "infer_stuck", "infer_exception", "camera_and_messaging_down", "read_errors",
-    "publish_errors", "worker_fatal", "stream_disabled",
+    "publish_errors", "worker_fatal", "stream_disabled", LOADING, LOADING_FATAL,
 )
 
 # 無畫面（相機中斷或 worker 失效）的情境
-EDGE_NO_FRAME = frozenset({"starting", "camera_down", "camera_and_messaging_down", "worker_fatal"})
+EDGE_NO_FRAME = frozenset({"starting", "camera_down", "camera_and_messaging_down", "worker_fatal",
+                           LOADING_FATAL})
+# ingest-worker 設定 fatal 的情境
+EDGE_WORKER_FATAL = frozenset({"worker_fatal", LOADING_FATAL})
 EDGE_MESSAGING_DOWN = frozenset({"messaging_down", "camera_and_messaging_down"})
 
 # api 情境：依賴失效，以及讓單一上游失效的 fatal

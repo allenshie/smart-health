@@ -34,6 +34,8 @@ const TABLE: [string, string][] = [
   ["publish_errors", "G G G G G Y"],
   ["worker_fatal", "R 灰 灰 灰 灰 灰"],
   ["stream_disabled", "G G G D D G"],
+  ["loading", "灰 灰 灰 灰 灰 灰"],
+  ["loading_fatal", "R 灰 灰 灰 灰 灰"],
 ];
 
 function expectedLamps(row: string): LampSnapshot {
@@ -42,6 +44,8 @@ function expectedLamps(row: string): LampSnapshot {
 }
 
 const ALL_OK = uniform(NODES, lampOf("ok"));
+// mock-edge-b 的 /status（compose 網路內）：用來確認後端不轉傳的 ready_at
+const TARGET_STATUS_URL = "http://mock-edge-b:18081/status";
 
 test.describe("SPEC §8.2 情境（mock-edge-b）", () => {
   test.beforeEach(async ({ page, request }) => {
@@ -55,8 +59,8 @@ test.describe("SPEC §8.2 情境（mock-edge-b）", () => {
     await setScenario(request, TARGET, "normal");
   });
 
-  test("情境表共 12 列", () => {
-    expect(TABLE).toHaveLength(12);
+  test("情境表共 14 列", () => {
+    expect(TABLE).toHaveLength(14);
   });
 
   for (const [name, row] of TABLE) {
@@ -74,6 +78,19 @@ test.describe("SPEC §8.2 情境（mock-edge-b）", () => {
       if (name === "starting") {
         await page.locator('button.lamp[data-node-id="ingest"]').click();
         await expect(detailField(page, "原因")).toHaveText("starting");
+      }
+      if (name === "loading" || name === "loading_fatal") {
+        // wait_for_ready=True 且尚未 mark_ready()：灰色節點為 starting，說明是就緒前的固定文字
+        await page.locator('button.lamp[data-node-id="ingest"]').click();
+        await expect(detailField(page, "原因")).toHaveText("starting");
+        await expect(detailField(page, "說明")).toHaveText("服務啟動中，尚未就緒");
+        const status = await (await request.get(TARGET_STATUS_URL)).json();
+        expect(status.ready_at).toBeNull();
+      }
+      if (name === "loading_fatal") {
+        await page.locator('button.lamp[data-node-id="ingest-worker"]').click();
+        await expect(detailField(page, "狀態")).toHaveText("unavailable");
+        await expect(detailField(page, "原因")).toHaveText("worker_crashed");
       }
       if (name === "camera_down") {
         await page.locator('button.lamp[data-node-id="ingest-worker"]').click();

@@ -1,4 +1,4 @@
-"""edge 模擬服務：規格書 8.2 的 12 個情境與 starting 重建行為。"""
+"""edge 模擬服務：規格書 8.2 的 14 個情境與 starting 重建行為。"""
 import json
 import threading
 
@@ -23,6 +23,8 @@ SCENARIO_TABLE = [
     ("publish_errors",       "G G G G G Y"),
     ("worker_fatal",         "R 灰 灰 灰 灰 灰"),
     ("stream_disabled",      "G G G D D G"),
+    ("loading",              "灰 灰 灰 灰 灰 灰"),
+    ("loading_fatal",        "R 灰 灰 灰 灰 灰"),
 ]
 
 FAST = dict(tick_interval_s=0.1, stuck_after_s=0.5, stale_after_s=2.0,
@@ -36,8 +38,8 @@ def expected_states(row):
 ALL_OK = {n: "ok" for n in NODES}
 
 
-def test_table_has_all_12_rows():
-    assert len(SCENARIO_TABLE) == 12
+def test_table_has_all_14_rows():
+    assert len(SCENARIO_TABLE) == 14
 
 
 @pytest.mark.parametrize("name,row", SCENARIO_TABLE, ids=[r[0] for r in SCENARIO_TABLE])
