@@ -83,6 +83,7 @@ curl http://127.0.0.1:18090/status
 | 方法 | 用途 |
 |---|---|
 | `record_start()`、`record_success()` | 工作開始與成功；`record_success` 可在主迴圈高頻呼叫，只寫時間戳 |
+| `record_skip()` | 這次執行跳過（例如沒有新畫面）：只清除進行中狀態，不算成功，見 3.6 節；可高頻呼叫 |
 | `record_error(reason, message=None)` | 一次錯誤；`error_window_s`（預設 30 秒）內節點為 `degraded` |
 | `set_fatal(reason, message=None)`、`clear_fatal()` | 致命故障；節點為 `unavailable`，直到清除 |
 | `set_metric(name, value)` | 指標，值只接受數字、字串、布林或 `None` |
@@ -216,6 +217,62 @@ True
 >>> now[0] = 126.0  # 就緒後超過 5 秒仍未成功
 >>> show()
 ('unavailable', 'never_succeeded', '從未有成功紀錄')
+
+```
+
+### 3.6 跳過（`record_skip()`）與「成功但沒有結果」
+
+呼叫 `record_start()` 之後，進行中狀態只有 `record_success()`、`record_error()`、`record_skip()` 會清除。如果某次執行既不是成功也不是錯誤，卻什麼都不呼叫，節點會一直停在進行中，超過 `stuck_after_s` 就被判成 `stuck`。
+
+請依結果選擇：
+
+| 結果 | 呼叫 | 效果 |
+|---|---|---|
+| 有處理到資料，只是沒有結果，例如畫面中沒有偵測到物件 | `record_success()` | 算成功，stale 重新計時 |
+| 沒有可處理的資料，這次跳過，例如沒有新畫面 | `record_skip()` | 只清除進行中狀態；最後一次成功時間、錯誤、fatal、metrics 都不變 |
+
+跳過不算成功，所以持續跳過的節點超過 `stale_after_s` 後仍會是 `unavailable`（前提是上游正常）。這是刻意的：上游斷線、一直沒有新畫面時，下游不應該因為「有在執行」而顯示綠燈。
+
+```python
+def run_once(frame):
+    detect.record_start()
+    if frame is None:              # 沒有新畫面：跳過，不算成功
+        detect.record_skip()
+        return
+    objects = detector(frame)      # 沒有偵測到物件也是成功
+    detect.record_success()
+```
+
+下面用假時鐘比較兩個節點，每秒執行一次（`stuck_after_s=2`、`stale_after_s=5`）。`detect` 每次都有畫面但沒有物件，`track` 每次都沒有新畫面：
+
+```python
+>>> import logging
+>>> from smart_health_record import HealthMonitor
+>>> quiet = logging.getLogger("integration-doc-skip")  # 範例不輸出狀態變化的 log
+>>> quiet.addHandler(logging.NullHandler())
+>>> quiet.propagate = False
+>>> now = [0.0]
+>>> monitor = HealthMonitor("vision", "cam-1", clock=lambda: now[0], logger=quiet)
+>>> monitor.add_lane("main", "主流程")
+>>> rules = dict(stale_after_s=5, stuck_after_s=2, startup_grace_s=0)
+>>> detect = monitor.add_node("detect", "偵測", "main", **rules)
+>>> track = monitor.add_node("track", "追蹤", "main", **rules)
+>>> detect.record_success()
+>>> track.record_success()
+>>> def run_until(t):
+...     while now[0] < t:
+...         now[0] += 1
+...         detect.record_start()
+...         detect.record_success()  # 有畫面，沒有物件：成功
+...         track.record_start()
+...         track.record_skip()      # 沒有新畫面：跳過
+...     monitor.evaluate_once()
+...     nodes = monitor.status()["nodes"]
+...     return {n: (nodes[n]["state"], nodes[n]["reason"]) for n in ("detect", "track")}
+>>> run_until(3)  # 已超過 stuck_after_s，但跳過不會被判成 stuck
+{'detect': ('ok', None), 'track': ('ok', None)}
+>>> run_until(6)  # 持續跳過：超過 stale_after_s 後 track 是 unavailable
+{'detect': ('ok', None), 'track': ('unavailable', 'stale_success')}
 
 ```
 
