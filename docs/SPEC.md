@@ -9,6 +9,7 @@
 - `/status` 新增非必要欄位 `ready_at`，`schema_version` 維持 1（第 4.3 節）。
 - 模擬架構的依賴與情境改用角色名稱：`ffmpeg` → `stream_sink`、`mqtt` → `messaging`，情境 `mqtt_down` → `messaging_down`、`mediamtx_down` → `stream_sink_down`、`camera_and_mqtt_down` → `camera_and_messaging_down`（第 4.2、8.1、8.2 節）。
 - 模擬服務新增 `loading`、`loading_fatal` 情境（第 8.2 節）。
+- `NodeRecorder` 新增 `record_skip()`（第 5.1、5.2、5.3 節）：跳過（例如沒有新畫面）只清除進行中狀態，不算成功，避免節點被誤判成 stuck。
 
 **1.4 變更摘要：** 依最終審查驗收，第 10 節 App 的 CI 路徑加入 `packages/**`：後端整合測試、模擬服務、mock 映像檔與 e2e 都直接使用函式庫原始碼，函式庫改動也要觸發。
 
@@ -298,6 +299,7 @@ class HealthMonitor:
 class NodeRecorder:
     def record_start(self) -> None: ...
     def record_success(self) -> None: ...
+    def record_skip(self) -> None: ...
     def record_error(self, reason: str, message: str | None = None) -> None: ...
     def set_fatal(self, reason: str, message: str | None = None) -> None: ...
     def clear_fatal(self) -> None: ...
@@ -328,7 +330,10 @@ def mask_text(text: str) -> str: ...
 
 - `reason` 格式錯誤時改用 `invalid_reason`，並記一次警告。
 - `set_metric` 的值型別錯誤時忽略，並記一次警告。
-- `record_success`、`record_error` 都會清除進行中狀態。
+- `record_success`、`record_error`、`record_skip` 都會清除進行中狀態。
+- `record_skip()`（1.5 新增）：這次執行的結果是「跳過」，例如沒有新畫面。只清除進行中狀態，其他紀錄都不變：最後一次成功時間、錯誤、fatal、metrics 都保持原樣。
+  - 跳過不算成功，所以不會讓 stale 重新計時；節點持續跳過時，最後仍會依規則 9 判定為 stale（前提是上游正常）。這樣上游斷線時，下游不會因為「有在執行」而顯示綠燈。
+  - 沒有進行中的工作時呼叫，不做任何事。
 - `track()` 進入時 `record_start`；正常結束時 `record_success`；發生例外時 `record_error("exception", <例外訊息>)`，然後**原樣往外拋**。
 
 **就緒（`mark_ready()`）**
@@ -360,10 +365,11 @@ def mask_text(text: str) -> str: ...
 
 ### 5.3 效能要求
 
-`record_success` 會在主迴圈高頻呼叫，只能寫時間戳：
+`record_success`、`record_skip` 會在主迴圈高頻呼叫，只能寫時間戳或旗標：
 
 - 不做 I/O，不產生大量物件。
 - 單次平均低於 20 微秒。以 `benchmarks/bench_recorder.py` 量測，不放進 CI 判定。
+- `bench_recorder.py` 同時量測 `record_skip`，耗時要和 `record_success` 同一量級。
 
 ## 6. 後端
 
