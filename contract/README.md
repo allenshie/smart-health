@@ -23,6 +23,7 @@
 - 時間字串為含時區的 ISO 8601。
 - `evaluated_at` 為 `null` 時，`nodes` 必須為 `{}`、`recent_transitions` 必須為 `[]`。
 - `recent_transitions` 最多 50 筆，`from` 可為 `null`。
+- `/status` 的 `ready_at`（SPEC 1.5 新增，非必要欄位）：時間字串或 `null`，`null` 代表還沒就緒；`wait_for_ready=False` 時等於 `started_at`。沒有這個欄位的 1.4 輸出仍然有效，`schema_version` 維持 `1`。
 
 ## topology_version 算法
 

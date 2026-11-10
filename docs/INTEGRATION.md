@@ -103,6 +103,7 @@ id 重複或格式錯誤、lane 或 upstream 指向不存在的項目、upstream
 - 專案必須提供立即回傳的 callable，例如讀取另一個執行緒維護的旗標。不要在裡面做網路請求、磁碟 I/O 或等待鎖。
 - 阻塞時評估執行緒停住，`/status` 的 `evaluation_age_s` 會持續增加；Health App 在超過 `evaluation_stale_after_s`（預設 10 秒）後把該目標顯示為 `stale`，所有節點變灰色。
 - callable 拋例外時，dependency 視為 `None`（無法判斷，視同通過），`enabled` 視為 `True`；同一個 callable 連續失敗只記一次警告。
+- 使用 `wait_for_ready=True` 時，就緒之前不呼叫這些 callable，見 3.5 節。
 
 ### 3.2 port 由專案指定
 
@@ -116,7 +117,7 @@ id 重複或格式錯誤、lane 或 upstream 指向不存在的項目、upstream
 
 `stale_after_s`、`stuck_after_s` 為 `None`（預設）時會跳過對應檢查，讓閒置也正常的節點（例如 API server）不會誤報。但要留意啟動初期的行為（SPEC 第 3 節規則 3、8、11）：
 
-1. 從未成功、且還在 `startup_grace_s`（預設 30 秒，從 `HealthMonitor.start()` 起算）內：`waiting`，reason 為 `starting`，畫面上是「啟動中」。
+1. 從未成功、且還在 `startup_grace_s`（預設 30 秒，從 `HealthMonitor.start()` 起算；使用 `wait_for_ready=True` 時從就緒時刻起算，見 3.5 節）內：`waiting`，reason 為 `starting`，畫面上是「啟動中」。
 2. 超過 `startup_grace_s` 仍從未成功：因為沒有設定 `stale_after_s`，規則 8 不成立，直接變成 `ok`。
 3. 下游節點在上游還是 `waiting` 的期間，會顯示 `waiting`，reason 為 `upstream_not_ready`。
 
@@ -141,6 +142,82 @@ id 重複或格式錯誤、lane 或 upstream 指向不存在的項目、upstream
 ```
 
 如果節點應該持續有成功紀錄，請設定 `stale_after_s`，這樣從未成功的節點在寬限期後會是 `unavailable`（`never_succeeded`），而不是 `ok`。
+
+### 3.5 啟動時間較長的服務
+
+服務啟動時如果要載入模型或暖機，時間可能從數十秒到數分鐘都有。預設行為下，`startup_grace_s` 從 `start()` 起算，載入超過寬限期，節點就會被判成 `never_succeeded`；如果延後 `start()`，載入期間 `/status` 會回 503，Health App 顯示 `offline`，看起來和程式已經死掉一樣。
+
+這類服務請以 `wait_for_ready=True` 建立 `HealthMonitor`，在 `start()` 後就提供 `/status`，載入完成後呼叫 `mark_ready()`：
+
+```python
+monitor = HealthMonitor("edge", "CamA-northbound-1", wait_for_ready=True)
+# ... add_lane、add_node ...
+monitor.start()
+StatusServer(monitor, port=18090).start()   # 載入期間 /status 就能回應，節點為灰色「啟動中」
+load_models()                               # 專案自己的載入與暖機
+monitor.mark_ready()                        # 之後才開始一般的判定
+```
+
+就緒之前：
+
+- 只判定 fatal：已設定 fatal 的節點是 `unavailable`，其他節點一律 `waiting`，reason 為 `starting`，message 為 `服務啟動中，尚未就緒`。所以載入失敗時請用 `set_fatal()` 回報。
+- 不判定 stuck、stale、`never_succeeded`、上游、lane、錯誤視窗。
+- **不呼叫 `enabled` 和 `dependencies` 的 callable**，它們可以引用載入完成後才建立的物件。
+- `NodeRecorder` 的方法照常記錄，業務執行緒不需要知道目前是否已就緒。
+- `/status` 的 `ready_at` 為 `null`。
+
+就緒之後套用一般規則（SPEC 第 3 節），但時間相關的判斷從就緒時刻起算：
+
+| 判斷 | 起算點 |
+|---|---|
+| `startup_grace_s` | 就緒時刻 |
+| stuck | `max(record_start 的時間, 就緒時刻)` |
+| stale | `max(最後一次成功的時間, 就緒時刻)`；`已 N 秒沒有成功紀錄` 的 N 也是 |
+| `error_window_s` | 就緒之前的錯誤不計入；剛好在就緒時刻的錯誤要計入 |
+
+- 「是否曾經成功」包含就緒之前的成功紀錄。
+- `mark_ready()` 在 `start()` 之前呼叫會拋 `RuntimeError`（`evaluate_once()` 的隱含 start 也算已開始）。可以從任何執行緒呼叫，不會阻塞；重複呼叫不改變就緒時刻。新的狀態在下一輪評估時反映。
+- 預設的 `wait_for_ready=False` 行為和之前完全相同：就緒時刻就是 `start()`，`mark_ready()` 不做任何事，`ready_at` 等於 `started_at`。
+
+下面用假時鐘驗證（節點 `infer` 的 `startup_grace_s=5`，從未成功）：
+
+```python
+>>> import logging
+>>> from smart_health_record import HealthMonitor
+>>> quiet = logging.getLogger("integration-doc")  # 範例不輸出狀態變化的 log
+>>> quiet.addHandler(logging.NullHandler())
+>>> quiet.propagate = False
+>>> now = [0.0]
+>>> monitor = HealthMonitor("model-service", "model-1", clock=lambda: now[0],
+...                         logger=quiet, wait_for_ready=True)
+>>> monitor.add_lane("main", "主流程")
+>>> infer = monitor.add_node("infer", "推論", "main", stale_after_s=10, startup_grace_s=5)
+>>> monitor.start()
+>>> monitor.stop()
+>>> def show():
+...     monitor.evaluate_once()
+...     node = monitor.status()["nodes"]["infer"]
+...     return node["state"], node["reason"], node["message"]
+>>> now[0] = 120.0  # 載入了兩分鐘，遠超過 startup_grace_s，仍然是啟動中
+>>> show()
+('waiting', 'starting', '服務啟動中，尚未就緒')
+>>> monitor.status()["ready_at"] is None
+True
+>>> infer.set_fatal("model_load_failed", "模型檔不存在")  # 就緒前設定 fatal
+>>> show()
+('unavailable', 'model_load_failed', '模型檔不存在')
+>>> infer.clear_fatal()
+>>> monitor.mark_ready()  # 載入完成；寬限期從這裡重新計算
+>>> show()
+('waiting', 'starting', '啟動中，尚未有成功紀錄')
+>>> now[0] = 125.0  # 剛好等於寬限期，還沒超過
+>>> show()
+('waiting', 'starting', '啟動中，尚未有成功紀錄')
+>>> now[0] = 126.0  # 就緒後超過 5 秒仍未成功
+>>> show()
+('unavailable', 'never_succeeded', '從未有成功紀錄')
+
+```
 
 ### 3.4 `message` 會被遮蔽，且後端不會重新遮蔽
 
