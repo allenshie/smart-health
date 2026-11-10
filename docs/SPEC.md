@@ -1,8 +1,14 @@
 # smart_health 規格書
 
 - **狀態：** 定稿
-- **版本：** 1.4（2026-11-07）
+- **版本：** 1.5（2026-11-10）
 - **實作計畫：** [PLAN.md](PLAN.md)
+
+**1.5 變更摘要：** 依 Edge 健康回報的階段 A 變更需求：
+- `HealthMonitor` 新增 `wait_for_ready` 與 `mark_ready()`（第 3.1、5.1、5.2 節）。就緒前只判定 fatal；`wait_for_ready=True` 時，時間相關的判斷從就緒時刻起算；`wait_for_ready=False` 完全沿用 1.4 的公式。
+- `/status` 新增非必要欄位 `ready_at`，`schema_version` 維持 1（第 4.3 節）。
+- 模擬架構的依賴與情境改用角色名稱：`ffmpeg` → `stream_sink`、`mqtt` → `messaging`，情境 `mqtt_down` → `messaging_down`、`mediamtx_down` → `stream_sink_down`、`camera_and_mqtt_down` → `camera_and_messaging_down`（第 4.2、8.1、8.2 節）。
+- 模擬服務新增 `loading`、`loading_fatal` 情境（第 8.2 節）。
 
 **1.4 變更摘要：** 依最終審查驗收，第 10 節 App 的 CI 路徑加入 `packages/**`：後端整合測試、模擬服務、mock 映像檔與 e2e 都直接使用函式庫原始碼，函式庫改動也要觸發。
 
@@ -85,7 +91,7 @@ HTTP 執行緒 /status ◀── 讀取快取結果 ┘
 
 ## 3. 評估規則
 
-由上往下，符合第一條就回傳。`stale_after_s` 等欄位定義見第 5 節。
+由上往下，符合第一條就回傳。`stale_after_s` 等欄位定義見第 5 節。尚未就緒時改用第 3.1 節的規則。
 
 | # | 條件 | 狀態 | `reason` |
 |---|---|---|---|
@@ -105,13 +111,48 @@ HTTP 執行緒 /status ◀── 讀取快取結果 ┘
 
 - `stale_after_s`、`stuck_after_s` 為 `None` 時跳過對應檢查，讓閒置也正常的節點（如 API server）不會誤報。
 - dependency 為 `None` 代表無法判斷，視同通過。
-- `startup_grace_s` 從 `HealthMonitor.start()` 開始計算，`/status` 的 `started_at` 也是這個時間。
+- `startup_grace_s` 從就緒時刻開始計算（見第 3.1 節）。`wait_for_ready=False`（預設）時，就緒時刻就是 `HealthMonitor.start()`，`/status` 的 `started_at` 也是這個時間。
 - 規則 9 的 `message` 固定為 `已 N 秒沒有成功紀錄`，N 取整數秒；規則 3、6、7、8 也使用函式庫內建的固定文字。
-- dependency 的 `message` 要指出是哪個依賴，例如 `依賴 mqtt 無法使用`。
+- dependency 的 `message` 要指出是哪個依賴，例如 `依賴 messaging 無法使用`。
 - 上游的判斷使用同一輪評估的結果，節點依拓樸順序評估。
 - 所有時間差使用 monotonic clock，不受系統時間調整影響。對外的時間字串使用含時區的 ISO 8601。
 
 已知限制（本版不處理）：節點在 sequential lane 中拋例外時，同一輪後面的節點不會執行，可能因 stale 顯示 `unavailable`。
+
+### 3.1 等待就緒（`wait_for_ready`）
+
+啟動時要載入模型或暖機的服務，載入時間不固定。這類服務以 `wait_for_ready=True` 建立 `HealthMonitor`，在 `start()` 後就能提供 `/status`，載入完成後呼叫 `mark_ready()`，之後才開始判定。
+
+| 項目 | `wait_for_ready=False`（預設） | `wait_for_ready=True` |
+|---|---|---|
+| 就緒時刻 | `start()` 的時刻，和 1.4 完全相同 | 第一次呼叫 `mark_ready()` 的時刻 |
+| `mark_ready()` | 不做任何事，不拋例外 | 第一次呼叫時記錄就緒時刻，之後重複呼叫不做任何事 |
+
+**就緒之前**，每個節點依序套用以下規則，符合第一條就回傳：
+
+| # | 條件 | 狀態 | `reason` |
+|---|---|---|---|
+| 1 | 已設定 fatal | `unavailable` | fatal 的 reason |
+| 2 | 其他 | `waiting` | `starting` |
+
+- `message` 使用固定文字 `服務啟動中，尚未就緒`。不沿用規則 3 的文字，因為就緒前可能已經有成功紀錄。
+- **就緒之前不呼叫 `enabled` 和 `dependencies` 的 callable**，因為它們可能引用還沒初始化的物件。
+- 不判定 stuck、stale、`never_succeeded`、上游、lane、錯誤視窗。
+- `NodeRecorder` 的所有方法照常接受呼叫並保存紀錄，業務執行緒不需要知道目前是否已就緒。
+
+**就緒之後**套用第 3 節的規則。`wait_for_ready=True` 時再加上一條原則：**時間相關的判斷一律從就緒時刻起算**，也就是取「事件時間」和「就緒時刻」中較晚的一個。
+
+| 規則 | `wait_for_ready=False`（同 1.4） | `wait_for_ready=True` |
+|---|---|---|
+| 3、8：`startup_grace_s` | `start()` | 就緒時刻 |
+| 4：stuck（含規則 6） | `record_start()` 的時間 | `max(record_start 時間, 就緒時刻)` |
+| 9：stale | 最後一次成功的時間 | `max(最後一次成功時間, 就緒時刻)` |
+| 10：`error_window_s` | 錯誤發生的時間 | 就緒之前發生的錯誤不計入 |
+
+- 「是否曾經成功」（規則 3、8）包含就緒之前的成功紀錄。
+- 剛好發生在就緒時刻的錯誤要計入（時間 ≥ 就緒時刻）。
+- 規則 9 的 `已 N 秒沒有成功紀錄`，N 也從較晚的那個時間起算。
+- **`wait_for_ready=False` 時完全沿用 1.4 的公式，不取較晚時間。** `add_node()` 在 `start()` 前就回傳 recorder，事件可能早於 `start()`，既有行為依賴這點。
 
 ## 4. 通用契約（`schema_version: 1`）
 
@@ -144,7 +185,7 @@ HTTP 執行緒 /status ◀── 讀取快取結果 ┘
   ],
   "nodes": [
     {"id": "ingest", "label": "Ingest", "upstream": ["ingest-worker"], "dependencies": []},
-    {"id": "publish", "label": "Publish", "upstream": ["infer"], "dependencies": ["mqtt"]}
+    {"id": "publish", "label": "Publish", "upstream": ["infer"], "dependencies": ["messaging"]}
   ]
 }
 ```
@@ -164,6 +205,7 @@ HTTP 執行緒 /status ◀── 讀取快取結果 ┘
   "instance": "CamA-northbound-1",
   "topology_version": "3f9a1c7b2d4e6f80",
   "started_at": "2026-11-05T10:00:00+08:00",
+  "ready_at": "2026-11-05T10:00:00+08:00",
   "evaluated_at": "2026-11-05T10:32:15+08:00",
   "evaluation_age_s": 0.4,
   "nodes": {
@@ -187,10 +229,12 @@ HTTP 執行緒 /status ◀── 讀取快取結果 ┘
 - `since` 只有狀態改變才更新。reason 或 message 改變不更新 `since`、不算一筆變化。
 - `recent_transitions` 由新到舊，最多 50 筆。第一次評估到的狀態也算一筆，`from` 為 `null`。
 - `metrics` 的值只能是數字、字串、布林或 `null`。
+- `ready_at`（1.5 新增）：就緒時刻，含時區的 ISO 8601 字串或 `null`；`null` 代表還沒就緒。`wait_for_ready=False` 時等於 `started_at`。這是新增欄位，`schema_version` 維持 1，JSON Schema 中為非必要欄位，1.4 函式庫的輸出仍然有效。後端與前端不使用這個欄位。
 
 **第一輪評估完成前：** 回 HTTP 200，內容符合 schema，範例見 `contract/fixtures/status_before_first_evaluation.json`：
 
 - `evaluated_at` 為 `null`，`nodes` 為 `{}`，`recent_transitions` 為 `[]`。
+- `ready_at` 依上一段的規則輸出，同樣包含在回應中。
 - `started_at` 已有值，`evaluation_age_s` 從 `start()` 起算。如果第一輪被阻塞，這個值會持續增加，後端因此判定為 `stale`。
 
 **`HealthMonitor.start()` 之前：** `GET /topology`、`GET /status` 都回 HTTP 503 JSON。
@@ -227,7 +271,8 @@ class HealthMonitor:
                  max_transitions: int = 200,
                  logger: logging.Logger | None = None,
                  clock: Callable[[], float] = time.monotonic,
-                 wall_clock: Callable[[], datetime] = <含本地時區的現在時間>) -> None: ...
+                 wall_clock: Callable[[], datetime] = <含本地時區的現在時間>,
+                 wait_for_ready: bool = False) -> None: ...
 
     def add_lane(self, lane_id: str, label: str, *,
                  parent: str | None = None, sequential: bool = False) -> None: ...
@@ -247,6 +292,7 @@ class HealthMonitor:
     def evaluate_once(self) -> None: ...  # 執行一輪評估，供測試使用；未 start() 時視為以當下時間開始，但不啟動執行緒
     def topology(self) -> dict: ...       # start() 前拋 RuntimeError
     def status(self) -> dict: ...         # start() 前拋 RuntimeError
+    def mark_ready(self) -> None: ...     # 宣告已就緒（第 3.1 節）；start() 前拋 RuntimeError
 
 
 class NodeRecorder:
@@ -285,11 +331,18 @@ def mask_text(text: str) -> str: ...
 - `record_success`、`record_error` 都會清除進行中狀態。
 - `track()` 進入時 `record_start`；正常結束時 `record_success`；發生例外時 `record_error("exception", <例外訊息>)`，然後**原樣往外拋**。
 
+**就緒（`mark_ready()`）**
+
+- 不論 `wait_for_ready` 為何，`start()` 之前呼叫都拋 `RuntimeError`，和 `topology()`、`status()` 一致。`evaluate_once()` 的隱含 start 也算已開始。
+- `start()` 之後：`wait_for_ready=False` 時不做任何事；`wait_for_ready=True` 時第一次呼叫記錄就緒時刻，重複呼叫不改變就緒時刻。
+- 可以從任何執行緒呼叫，不能阻塞，也不做 I/O。多個執行緒同時呼叫時，以第一個為準。只短暫取用記錄用的鎖，不碰評估鎖。
+- 新的就緒狀態在下一輪評估時反映即可，不立即觸發評估。
+
 **評估執行緒**
 
 - 每個 `HealthMonitor` 一條 daemon 執行緒。
 - 執行緒啟動後立刻跑第一輪評估，不等第一個 tick。
-- `dependencies`、`enabled` 的 callable 在評估執行緒呼叫。專案必須提供不阻塞的 callable，這點要寫進文件。
+- `dependencies`、`enabled` 的 callable 在評估執行緒呼叫，就緒之前不呼叫。專案必須提供不阻塞的 callable，這點要寫進文件。
 - callable 拋例外時，dependency 視為 `None`、`enabled` 視為 `True`，同一個 callable 連續失敗只記一次警告。
 - 評估本身拋例外時，記錄後繼續下一輪，不能讓執行緒結束。
 - 狀態改變時寫 log：進入 `unavailable` 用 WARNING，其他用 INFO。
@@ -447,10 +500,10 @@ python -m mock_service --profile edge --instance mock-edge-a --host 0.0.0.0 \
 | `ingest` | `main` | `ingest-worker` | 無 | |
 | `infer` | `main` | `ingest` | 無 | `stuck_after_s` 有設定 |
 | `stream` | `main` | `infer` | 無 | |
-| `stream-output` | `stream-bg` | `stream` | `ffmpeg` | |
-| `publish` | `main` | `infer` | `mqtt` | |
+| `stream-output` | `stream-bg` | `stream` | `stream_sink` | |
+| `publish` | `main` | `infer` | `messaging` | |
 
-`main` 是 sequential lane，所有節點都設定 `stale_after_s`。`ffmpeg` 依賴只有在有畫面時才回傳 true 或 false，否則回傳 `None`，避免相機斷線被誤判成推流問題。
+`main` 是 sequential lane，所有節點都設定 `stale_after_s`。依賴使用抽象角色名稱，不使用具體實作名稱。`stream_sink` 依賴只有在有畫面時才回傳 true 或 false，否則回傳 `None`，避免相機斷線被誤判成推流問題。
 
 `stale_after_s`、`startup_grace_s` 等門檻可用命令列參數調短，讓測試不用等太久。
 
@@ -463,20 +516,23 @@ python -m mock_service --profile edge --instance mock-edge-a --host 0.0.0.0 \
 | `normal` | G | G | G | G | G | G |
 | `starting` | 灰 | 灰 | 灰 | 灰 | 灰 | 灰 |
 | `camera_down` | R | 灰 | 灰 | 灰 | 灰 | 灰 |
-| `mqtt_down` | G | G | G | G | G | R |
-| `mediamtx_down` | G | G | G | G | R | G |
+| `messaging_down` | G | G | G | G | G | R |
+| `stream_sink_down` | G | G | G | G | R | G |
 | `infer_stuck` | G | 灰 | R | 灰 | 灰 | 灰 |
 | `infer_exception` | G | G | R | 灰 | 灰 | 灰 |
-| `camera_and_mqtt_down` | R | 灰 | 灰 | 灰 | 灰 | R |
+| `camera_and_messaging_down` | R | 灰 | 灰 | 灰 | 灰 | R |
 | `read_errors` | Y | G | G | G | G | G |
 | `publish_errors` | G | G | G | G | G | Y |
 | `worker_fatal` | R | 灰 | 灰 | 灰 | 灰 | 灰 |
 | `stream_disabled` | G | G | G | `disabled` | `disabled` | G |
+| `loading` | 灰 | 灰 | 灰 | 灰 | 灰 | 灰 |
+| `loading_fatal` | R | 灰 | 灰 | 灰 | 灰 | 灰 |
 
 - `starting`：規則 3 要求「從未成功」，所以切到這個情境時，mock 會重建 `HealthMonitor` 和 `StatusServer` 來模擬服務重啟，`started_at` 也會改變，函式庫不提供重置 API。此情境不記錄成功，`startup_grace_s` 要大於觀察所需的時間。重建期間 `/status` 會短暫連不上，後端可能短暫顯示 `offline`，這是預期行為。
 - `infer_exception`：`infer` 持續以 `track()` 拋例外。依規則 9 為 `R`，超過 stale 門檻前是 `Y`。
-- `camera_and_mqtt_down`：依賴檢查排在上游檢查之前，所以 MQTT 問題仍看得到。
+- `camera_and_messaging_down`：依賴檢查排在上游檢查之前，所以 messaging 問題仍看得到。
 - `stream_disabled`：`stream`、`stream-output` 的 `enabled` 為 false，下游 `publish` 依賴 `infer`，不受影響。
+- `loading`、`loading_fatal`：以 `wait_for_ready=True` 重建 `HealthMonitor` 和 `StatusServer`，期間不呼叫 `mark_ready()`。`loading` 期間模擬執行緒仍持續記錄成功，用來驗證就緒之前不會判定；`loading_fatal` 在 `ingest-worker` 設定 fatal。灰色節點的 `reason` 都是 `starting`，`ready_at` 為 `null`。從這兩個情境切換到其他情境時呼叫 `mark_ready()`，不重建。既有的 `starting` 情境維持原做法，作為 `wait_for_ready=False` 的對照。
 
 ### 8.3 其他模擬服務
 
