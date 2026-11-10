@@ -44,6 +44,31 @@ def test_status_fixtures_accepted(name):
     assert set(model.nodes) == set(doc["nodes"])
 
 
+STATUS_FIXTURE_NAMES = ["status_edge_camera_down.json", "status_before_first_evaluation.json"]
+
+
+@pytest.mark.parametrize("name", STATUS_FIXTURE_NAMES)
+def test_status_v14_and_v15_parse_to_same_model(name):
+    """SPEC 1.5 的 ready_at 是新增欄位：v1.4（沒有 ready_at）與 v1.5 都能解析，且後端忽略它。"""
+    v15 = load_fixture(name)
+    assert "ready_at" in v15
+    v14 = copy.deepcopy(v15)
+    del v14["ready_at"]
+    jsonschema.validate(v14, STATUS_SCHEMA)
+    assert parse_status(dumps(v14)) == parse_status(dumps(v15))
+
+
+@pytest.mark.parametrize("ready_at", [None, "2026-11-05T10:00:42.000+08:00"])
+def test_status_ready_at_value_does_not_affect_model(ready_at):
+    base = load_fixture("status_edge_camera_down.json")
+    doc = copy.deepcopy(base)
+    doc["ready_at"] = ready_at
+    jsonschema.validate(doc, STATUS_SCHEMA)
+    model = parse_status(dumps(doc))
+    assert model == parse_status(dumps(base))
+    assert "ready_at" not in model.model_dump()
+
+
 def test_unknown_fields_ignored():
     doc = load_fixture("status_edge_camera_down.json")
     doc["future"] = {"x": 1}
