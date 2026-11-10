@@ -87,7 +87,7 @@ def wall() -> FakeWallClock:
     return FakeWallClock()
 
 
-def build_edge(monitor, ffmpeg=lambda: True, mqtt=lambda: True):
+def build_edge(monitor, stream_sink=lambda: True, messaging=lambda: True):
     """依 contract/fixtures/topology_edge.json 建立 edge 架構。"""
     monitor.add_lane("main", "Main", sequential=True)
     monitor.add_lane("ingest-bg", "Ingest worker", parent="ingest")
@@ -97,9 +97,9 @@ def build_edge(monitor, ffmpeg=lambda: True, mqtt=lambda: True):
     monitor.add_node("infer", "Infer", "main", upstream=["ingest"])
     monitor.add_node("stream", "Stream", "main", upstream=["infer"])
     monitor.add_node("stream-output", "Stream output", "stream-bg", upstream=["stream"],
-                     dependencies={"ffmpeg": ffmpeg})
+                     dependencies={"stream_sink": stream_sink})
     monitor.add_node("publish", "Publish", "main", upstream=["infer"],
-                     dependencies={"mqtt": mqtt})
+                     dependencies={"messaging": messaging})
     return monitor
 
 

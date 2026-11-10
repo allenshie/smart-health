@@ -16,8 +16,8 @@ FAST = dict(tick_interval_s=0.1, stuck_after_s=0.5, stale_after_s=3.0,
 def test_initial_scenario_is_normal_and_post_get(mock_service):
     svc = mock_service("edge", **FAST)
     assert svc.scenario() == "normal"
-    svc.set_scenario("mqtt_down")
-    assert svc.scenario() == "mqtt_down"
+    svc.set_scenario("messaging_down")
+    assert svc.scenario() == "messaging_down"
 
 
 def test_unknown_scenario_and_invalid_json_return_400(mock_service):
@@ -96,3 +96,11 @@ def test_no_credentials_in_status_or_output(mock_service, scenario, node, state)
                  "status 不含帳密", reads=5)
     svc.proc.stop()
     assert FAKE_SECRET not in svc.proc.output()
+
+
+@pytest.mark.parametrize("old", ["mqtt_down", "mediamtx_down", "camera_and_mqtt_down"])
+def test_old_scenario_names_are_rejected(mock_service, old):
+    svc = mock_service("edge", **FAST)
+    code, body = http_request(f"{svc.control_url}/scenario", method="POST", body={"name": old})
+    assert code == 400 and "error" in json.loads(body)
+    assert svc.scenario() == "normal"

@@ -76,15 +76,15 @@ def test_rule_4_stuck():
 
 def test_rule_5_dependency_false_over_upstream():
     sn = snap(last_success_at=STARTED + 99)
-    res = ev(spec(dependencies=("mqtt", "db")), sn,
-             dependencies={"mqtt": True, "db": False},
+    res = ev(spec(dependencies=("messaging", "db")), sn,
+             dependencies={"messaging": True, "db": False},
              upstream_states={"u": "unavailable"}, lane_blocked=True)
     assert res == ("unavailable", "dependency_unavailable", "依賴 db 無法使用")
 
 
 def test_rule_5_dependency_none_is_ignored():
     sn = snap(last_success_at=STARTED + 99)
-    res = ev(spec(dependencies=("mqtt",)), sn, dependencies={"mqtt": None})
+    res = ev(spec(dependencies=("messaging",)), sn, dependencies={"messaging": None})
     assert res == ("ok", None, None)
 
 
@@ -186,9 +186,9 @@ def test_rule_7_upstream_over_stale():
 
 
 def test_rule_4_stuck_over_dependency():
-    s = spec(stuck_after_s=5, dependencies=("mqtt",))
+    s = spec(stuck_after_s=5, dependencies=("messaging",))
     sn = snap(in_progress_since=STARTED + 10, last_success_at=STARTED + 1)
-    assert ev(s, sn, dependencies={"mqtt": False})[1] == "stuck"
+    assert ev(s, sn, dependencies={"messaging": False})[1] == "stuck"
 
 
 def test_rule_9_stale_over_recent_error():

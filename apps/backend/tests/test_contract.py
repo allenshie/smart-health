@@ -148,7 +148,7 @@ TOPOLOGY_NEGATIVE = {
     "lane_node_bad_id": _mutate(lambda d: d["lanes"][0].update(nodes=["Bad"])),
     "node_missing_label": _mutate(lambda d: d["nodes"][0].pop("label")),
     "node_upstream_bad": _mutate(lambda d: d["nodes"][0].update(upstream=["Bad"])),
-    "node_dep_not_list": _mutate(lambda d: d["nodes"][0].update(dependencies="mqtt")),
+    "node_dep_not_list": _mutate(lambda d: d["nodes"][0].update(dependencies="messaging")),
     "nodes_not_list": _mutate(lambda d: d.update(nodes={})),
 }
 

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "service": "edge",
   "instance": "CamA-northbound-1",
-  "topology_version": "7dfe2a247c6b2a64",
+  "topology_version": "9b7f296d8547c455",
   "lanes": [
     {
       "id": "main",
@@ -73,7 +73,7 @@
         "stream"
       ],
       "dependencies": [
-        "ffmpeg"
+        "stream_sink"
       ]
     },
     {
@@ -83,7 +83,7 @@
         "infer"
       ],
       "dependencies": [
-        "mqtt"
+        "messaging"
       ]
     }
   ]

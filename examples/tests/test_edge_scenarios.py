@@ -14,11 +14,11 @@ SCENARIO_TABLE = [
     ("normal",               "G G G G G G"),
     ("starting",             "灰 灰 灰 灰 灰 灰"),
     ("camera_down",          "R 灰 灰 灰 灰 灰"),
-    ("mqtt_down",            "G G G G G R"),
-    ("mediamtx_down",        "G G G G R G"),
+    ("messaging_down",       "G G G G G R"),
+    ("stream_sink_down",     "G G G G R G"),
     ("infer_stuck",          "G 灰 R 灰 灰 灰"),
     ("infer_exception",      "G G R 灰 灰 灰"),
-    ("camera_and_mqtt_down", "R 灰 灰 灰 灰 R"),
+    ("camera_and_messaging_down", "R 灰 灰 灰 灰 R"),
     ("read_errors",          "Y G G G G G"),
     ("publish_errors",       "G G G G G Y"),
     ("worker_fatal",         "R 灰 灰 灰 灰 灰"),
@@ -91,7 +91,7 @@ def test_scenarios_after_starting_do_not_rebuild_but_starting_again_does(mock_se
     svc.set_scenario("normal")
     svc.wait_states(ALL_OK)
     assert svc.status()["started_at"] == started
-    svc.set_scenario("mqtt_down")
+    svc.set_scenario("messaging_down")
     svc.wait_states(expected_states("G G G G G R"))
     assert svc.status()["started_at"] == started
     svc.set_scenario("starting")
@@ -150,3 +150,17 @@ def test_edge_topology_matches_fixture(mock_service):
     assert topo["nodes"] == fixture["nodes"]
     assert topo["topology_version"] == fixture["topology_version"]
     assert svc.status()["topology_version"] == fixture["topology_version"]
+
+
+@pytest.mark.parametrize("name,node,message", [
+    ("messaging_down", "publish", "依賴 messaging 無法使用"),
+    ("stream_sink_down", "stream-output", "依賴 stream_sink 無法使用"),
+])
+def test_dependency_message_uses_role_name(mock_service, name, node, message):
+    svc = mock_service("edge", **FAST)
+    svc.wait_states(ALL_OK)
+    svc.set_scenario(name)
+    wait_until(lambda: svc.status()["nodes"][node]["state"] == "unavailable", 10.0,
+               what=f"{node} unavailable")
+    got = svc.status()["nodes"][node]
+    assert (got["reason"], got["message"]) == ("dependency_unavailable", message)

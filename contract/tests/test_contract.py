@@ -199,7 +199,7 @@ def test_rejects_bad_lane_node_or_dependency_id(
     assert not topology_validator.is_valid(bad_upstream)
 
     bad_dep = copy.deepcopy(topology_doc)
-    bad_dep["nodes"][-1]["dependencies"] = ["MQTT"]
+    bad_dep["nodes"][-1]["dependencies"] = ["MESSAGING"]
     assert not topology_validator.is_valid(bad_dep)
 
     bad_status_key = copy.deepcopy(status_doc)

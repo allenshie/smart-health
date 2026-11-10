@@ -47,12 +47,12 @@ def test_dependency_callable_exception_treated_as_none(make):
 
 def test_dependency_false_makes_unavailable(make):
     m = make()
-    rec = simple(m, dependencies={"mqtt": lambda: False}, startup_grace_s=0)
+    rec = simple(m, dependencies={"messaging": lambda: False}, startup_grace_s=0)
     rec.record_success()
     m.evaluate_once()
     node = m.status()["nodes"]["a"]
     assert (node["state"], node["reason"], node["message"]) == (
-        "unavailable", "dependency_unavailable", "依賴 mqtt 無法使用")
+        "unavailable", "dependency_unavailable", "依賴 messaging 無法使用")
 
 
 def test_enabled_callable_exception_treated_as_true(make):

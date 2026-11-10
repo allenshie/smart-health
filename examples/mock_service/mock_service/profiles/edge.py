@@ -4,7 +4,7 @@ import time
 from smart_health_record import HealthMonitor
 
 from ..context import SimContext
-from ..scenarios import (EDGE_MQTT_DOWN, EDGE_NO_FRAME, EDGE_SCENARIOS, FAKE_PASSWORD_TEXT,
+from ..scenarios import (EDGE_MESSAGING_DOWN, EDGE_NO_FRAME, EDGE_SCENARIOS, FAKE_PASSWORD_TEXT,
                          FAKE_RTSP_URL, STARTING)
 from ..settings import Settings
 from . import Built
@@ -29,14 +29,14 @@ def build(settings: Settings, ctx: SimContext) -> Built:
                   startup_grace_s=settings.startup_grace_s,
                   error_window_s=settings.error_window_s)
 
-    def ffmpeg():  # 有畫面才判斷，避免相機斷線被誤判成推流問題
+    def stream_sink():  # 有畫面才判斷，避免相機斷線被誤判成推流問題
         scenario = ctx.scenario
         if not has_frame(scenario):
             return None
-        return scenario != "mediamtx_down"
+        return scenario != "stream_sink_down"
 
-    def mqtt():
-        return ctx.scenario not in EDGE_MQTT_DOWN
+    def messaging():
+        return ctx.scenario not in EDGE_MESSAGING_DOWN
 
     def stream_enabled():
         return ctx.scenario != "stream_disabled"
@@ -49,10 +49,10 @@ def build(settings: Settings, ctx: SimContext) -> Built:
     stream = monitor.add_node("stream", "Stream", "main", upstream=["infer"],
                               enabled=stream_enabled, **common)
     output = monitor.add_node("stream-output", "Stream output", "stream-bg",
-                              upstream=["stream"], dependencies={"ffmpeg": ffmpeg},
+                              upstream=["stream"], dependencies={"stream_sink": stream_sink},
                               enabled=stream_enabled, **common)
     publish = monitor.add_node("publish", "Publish", "main", upstream=["infer"],
-                               dependencies={"mqtt": mqtt}, **common)
+                               dependencies={"messaging": messaging}, **common)
 
     def worker_loop() -> None:
         fatal = False
@@ -106,7 +106,7 @@ def build(settings: Settings, ctx: SimContext) -> Built:
 
     def output_loop() -> None:
         while not ctx.stopped:
-            if ctx.scenario not in (STARTING, "mediamtx_down", "stream_disabled"):
+            if ctx.scenario not in (STARTING, "stream_sink_down", "stream_disabled"):
                 output.record_success()
             ctx.wait(MAIN_PERIOD_S)
 

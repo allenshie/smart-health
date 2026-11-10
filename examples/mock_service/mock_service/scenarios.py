@@ -9,14 +9,14 @@ STARTING = "starting"
 
 # 規格書 8.2 的 12 個情境
 EDGE_SCENARIOS = (
-    "normal", "starting", "camera_down", "mqtt_down", "mediamtx_down",
-    "infer_stuck", "infer_exception", "camera_and_mqtt_down", "read_errors",
+    "normal", "starting", "camera_down", "messaging_down", "stream_sink_down",
+    "infer_stuck", "infer_exception", "camera_and_messaging_down", "read_errors",
     "publish_errors", "worker_fatal", "stream_disabled",
 )
 
 # 無畫面（相機中斷或 worker 失效）的情境
-EDGE_NO_FRAME = frozenset({"starting", "camera_down", "camera_and_mqtt_down", "worker_fatal"})
-EDGE_MQTT_DOWN = frozenset({"mqtt_down", "camera_and_mqtt_down"})
+EDGE_NO_FRAME = frozenset({"starting", "camera_down", "camera_and_messaging_down", "worker_fatal"})
+EDGE_MESSAGING_DOWN = frozenset({"messaging_down", "camera_and_messaging_down"})
 
 # api 情境：依賴失效，以及讓單一上游失效的 fatal
 API_SCENARIOS = (

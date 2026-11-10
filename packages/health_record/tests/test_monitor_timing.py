@@ -156,12 +156,12 @@ def test_status_before_first_evaluation(make, clock, wall, gates, edge_builder):
     block = gates()
     entered = gates()
 
-    def ffmpeg():
+    def stream_sink():
         entered.set()
         block.wait(WAIT_S)
         return True
 
-    m = edge_builder(make("CamA-northbound-1", tick_interval_s=0.01), ffmpeg=ffmpeg)
+    m = edge_builder(make("CamA-northbound-1", tick_interval_s=0.01), stream_sink=stream_sink)
     m.start()
     assert entered.wait(WAIT_S)
     clock.advance(2.5)
