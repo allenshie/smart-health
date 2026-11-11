@@ -1,8 +1,13 @@
 # smart_health 規格書
 
 - **狀態：** 定稿
-- **版本：** 1.5（2026-11-10）
+- **版本：** 1.6（2026-11-11）
 - **實作計畫：** [PLAN.md](PLAN.md)
+
+**1.6 變更摘要：** 依 Edge 健康回報的階段 A3 變更需求，函式庫升到 `0.1.1`，只新增 API，和 `0.1.0` 相容：
+- `HealthMonitor` 新增 `recorder(node_id)`（第 5.1、5.2 節）：依節點 id 取得 `add_node()` 回傳的同一個 `NodeRecorder`，讓整合框架不必自行保存回傳值，也不必依賴私有屬性。
+- 套件採用 MIT 授權：新增 `LICENSE`，`pyproject.toml` 以 PEP 639 寫法加上 `license`、`license-files`，並加上 `authors`（只有名稱）與 classifiers（第 5 節）。
+- sdist 只包含建置需要的檔案：`src/`、`README.md`、`LICENSE`、`pyproject.toml`（第 5 節）。測試仍在 repo 中執行。
 
 **1.5 變更摘要：** 依 Edge 健康回報的階段 A 變更需求：
 - `HealthMonitor` 新增 `wait_for_ready` 與 `mark_ready()`（第 3.1、5.1、5.2 節）。就緒前只判定 fatal；`wait_for_ready=True` 時，時間相關的判斷從就緒時刻起算；`wait_for_ready=False` 完全沿用 1.4 的公式。
@@ -259,7 +264,9 @@ HTTP 執行緒 /status ◀── 讀取快取結果 ┘
 
 ## 5. 函式庫 `smart-health-record`
 
-- PyPI 名稱 `smart-health-record`，匯入名稱 `smart_health_record`，初版 `0.1.0`。
+- PyPI 名稱 `smart-health-record`，匯入名稱 `smart_health_record`，目前 `0.1.1`。
+- MIT 授權（`packages/health_record/LICENSE`）。wheel 和 sdist 都包含 `LICENSE`，METADATA 有 `License-Expression: MIT`；作者只寫名稱，不寫 email。
+- sdist 只包含 `src/`、`README.md`、`LICENSE`、`pyproject.toml`（以及建置產生的 `PKG-INFO`）。測試需要 repo 的 `contract/`，只在 repo 中執行。
 - `requires-python = ">=3.10"`。**執行時只用標準函式庫，不綁任何框架**。
 - 測試工具（`pytest`、`jsonschema`）只放在 `dev` extras。
 
@@ -294,6 +301,7 @@ class HealthMonitor:
     def topology(self) -> dict: ...       # start() 前拋 RuntimeError
     def status(self) -> dict: ...         # start() 前拋 RuntimeError
     def mark_ready(self) -> None: ...     # 宣告已就緒（第 3.1 節）；start() 前拋 RuntimeError
+    def recorder(self, node_id: str) -> NodeRecorder: ...  # 依 id 取得 add_node() 回傳的同一個物件；不存在時拋 KeyError
 
 
 class NodeRecorder:
@@ -342,6 +350,14 @@ def mask_text(text: str) -> str: ...
 - `start()` 之後：`wait_for_ready=False` 時不做任何事；`wait_for_ready=True` 時第一次呼叫記錄就緒時刻，重複呼叫不改變就緒時刻。
 - 可以從任何執行緒呼叫，不能阻塞，也不做 I/O。多個執行緒同時呼叫時，以第一個為準。只短暫取用記錄用的鎖，不碰評估鎖。
 - 新的就緒狀態在下一輪評估時反映即可，不立即觸發評估。
+
+**依 id 取得 recorder（`recorder()`，1.6 新增）**
+
+- 回傳 `add_node(node_id, ...)` 回傳的**同一個物件**，不建立新物件。
+- `add_node()` 之後的任何時候都可以呼叫：`start()` 之前、執行中、`stop()` 之後都可以。
+- 執行緒安全：和 `add_node()` 使用同一把鎖，只短暫持有，不碰評估鎖，不做 I/O。
+- 節點不存在時拋 `KeyError`，訊息為繁體中文，並以 `repr` 顯示傳入的 id。傳入的不是字串時（包括無法雜湊的值），同樣視為不存在，拋 `KeyError` 而不是 `TypeError`。
+- 不改變 `add_node()` 的回傳值和其他任何行為。
 
 **評估執行緒**
 
