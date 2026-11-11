@@ -6,18 +6,18 @@
 
 函式庫只使用 Python 標準函式庫，需要 Python 3.10 以上，沒有任何第三方依賴。
 
-本階段**尚未發布到 PyPI**（發布由使用者操作），目前從原始碼建置 wheel 後安裝：
+套件已發布到 PyPI，名稱為 `smart-health-record`，請固定版本安裝：
+
+```bash
+pip install smart-health-record==0.1.1
+```
+
+需要使用 repo 中尚未發布的版本時，可以從原始碼建置 wheel 後安裝：
 
 ```bash
 python -m pip install build
 python -m build packages/health_record          # 產生 packages/health_record/dist/*.whl
-python -m pip install packages/health_record/dist/smart_health_record-0.1.0-py3-none-any.whl
-```
-
-發布後，套件名稱為 `smart-health-record`，可以直接安裝：
-
-```bash
-pip install smart-health-record==0.1.0          # 發布後才可用
+python -m pip install packages/health_record/dist/smart_health_record-0.1.1-py3-none-any.whl
 ```
 
 匯入名稱是 `smart_health_record`，只公開 `HealthMonitor`、`NodeRecorder`、`StatusServer`、`mask_text` 與 `__version__`。`NodeRecorder` 由 `HealthMonitor.add_node` 回傳，不需自行建立。
@@ -90,6 +90,32 @@ curl http://127.0.0.1:18090/status
 | `track()` | context manager：進入記 `record_start`，正常結束記 `record_success`，例外記 `record_error("exception", ...)` 並原樣往外拋。被取消（`asyncio.CancelledError`）或 `KeyboardInterrupt` 等非 `Exception` 的 `BaseException` 中斷時，只清除進行中狀態，不記 success 也不記 error，例外同樣原樣往外拋 |
 
 `reason` 必須符合 `^[a-z][a-z0-9_]*$`，格式錯誤時會改用 `invalid_reason` 並記一次警告。這些方法不會讓例外進入業務執行緒。
+
+### 依節點 id 取得 recorder（`recorder()`）
+
+`monitor.recorder(node_id)` 回傳 `add_node()` 回傳的**同一個** `NodeRecorder`（0.1.1 新增）。整合框架只知道節點 id 時（例如任務只宣告要記錄到哪個節點），用它取得 recorder 即可，不必自行保存 `add_node()` 的回傳值，也不要依賴私有屬性。
+
+- `add_node()` 之後的任何時候都可以呼叫：`start()` 之前、執行中、`stop()` 之後都可以；可以從任何執行緒呼叫，不會等待評估。
+- 節點不存在時拋 `KeyError`，訊息以 `repr` 顯示傳入的 id。傳入的不是字串時同樣拋 `KeyError`。
+- 建議在服務啟動時就取得 recorder 並保存，讓打錯的 id 在啟動時就失敗；不要在主迴圈每次查詢。
+
+```python
+>>> from smart_health_record import HealthMonitor
+>>> monitor = HealthMonitor("order-service", "order-1")
+>>> monitor.add_lane("main", "主流程")
+>>> worker = monitor.add_node("worker", "訂單處理", "main")
+>>> monitor.recorder("worker") is worker
+True
+>>> monitor.recorder("wroker")
+Traceback (most recent call last):
+    ...
+KeyError: "node 'wroker' 不存在"
+>>> monitor.recorder(None)
+Traceback (most recent call last):
+    ...
+KeyError: 'node None 不存在'
+
+```
 
 ### 啟動階段的設定錯誤
 

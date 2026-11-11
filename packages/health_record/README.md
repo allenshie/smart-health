@@ -3,18 +3,15 @@
 在服務內記錄各節點的事實（開始、成功、錯誤、致命故障、指標），由獨立的評估執行緒推導健康狀態，並以 `GET /topology`、`GET /status` 提供給 Health App 讀取。
 
 - 執行時只使用 Python 標準函式庫，需要 Python 3.10 以上。
-- 公開 API：`HealthMonitor`、`StatusServer`、`mask_text`、`__version__`。
+- 公開 API：`HealthMonitor`、`NodeRecorder`、`StatusServer`、`mask_text`、`__version__`。
+- `NodeRecorder` 由 `add_node()` 回傳；之後也可以用 `monitor.recorder(node_id)` 依節點 id 取得同一個物件，不存在時拋 `KeyError`。
 - `message` 與字串型指標值會自動遮蔽密碼、token、URL 帳密等敏感資訊（有已知限制，見導入指南）。
 
 ## 安裝
 
-套件尚未發布到 PyPI。發布後可用：
-
 ```bash
-pip install smart-health-record==0.1.0
+pip install smart-health-record==0.1.1
 ```
-
-在那之前，請在 repo 根目錄用 `python -m build packages/health_record` 建置 wheel 後安裝。
 
 ## 最小範例
 
