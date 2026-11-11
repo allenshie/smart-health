@@ -221,6 +221,19 @@ class HealthMonitor:
             if self._ready_mono is None:  # 多個執行緒同時呼叫時以第一個為準
                 self._ready_mono, self._ready_at = ready_mono, ready_at
 
+    def recorder(self, node_id: str) -> NodeRecorder:
+        """依 id 取得 add_node() 回傳的同一個物件（規格書 5.1、5.2）；不存在時拋 KeyError。
+
+        和 add_node() 共用 _lock，只短暫持有，不碰評估鎖。非字串（含無法雜湊的值）一律視為不存在。
+        """
+        found = None
+        if isinstance(node_id, str):
+            with self._lock:
+                found = self._recorders.get(node_id)
+        if found is None:
+            raise KeyError(f"node {node_id!r} 不存在")
+        return found
+
     def _run(self, stop: threading.Event) -> None:
         while not stop.is_set():
             self._guarded_round(stop)
