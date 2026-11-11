@@ -4,10 +4,19 @@ build-backend = "hatchling.build"
 
 [project]
 name = "smart-health-record"
-version = "0.1.0"
+version = "0.1.1"
 description = "通用的服務健康狀態記錄函式庫：節點架構、狀態評估與 /topology、/status HTTP 端點（僅用標準函式庫）"
 readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "allen.mycena" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: OS Independent",
+]
 dependencies = []
 
 [project.optional-dependencies]
@@ -15,6 +24,10 @@ dev = ["pytest", "jsonschema"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/smart_health_record"]
+
+# sdist 只包含建置需要的檔案；測試需要 repo 的 contract/，只在 repo 中執行（規格書第 5 節）
+[tool.hatch.build.targets.sdist]
+only-include = ["src", "README.md", "LICENSE", "pyproject.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

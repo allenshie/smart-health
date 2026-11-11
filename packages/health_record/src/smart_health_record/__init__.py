@@ -4,6 +4,6 @@ from .monitor import HealthMonitor
 from .recorder import NodeRecorder
 from .server import StatusServer
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = ["HealthMonitor", "NodeRecorder", "StatusServer", "mask_text", "__version__"]
