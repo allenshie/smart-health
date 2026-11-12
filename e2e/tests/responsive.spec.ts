@@ -17,7 +17,7 @@ for (const [target, nodes] of [
     const scrollWidth = () => page.evaluate(() => document.documentElement.scrollWidth);
     expect(await scrollWidth()).toBeLessThanOrEqual(360);
     if (target === "mock-edge-b") {
-      await page.screenshot({ path: screenshotPath("mobile"), fullPage: true });
+      await page.screenshot({ path: screenshotPath("mobile"), fullPage: true, animations: "disabled" });
     }
     // 開啟詳細面板後也不能水平捲動
     await page.locator(`button.lamp[data-node-id="${nodes[0]}"]`).click();
@@ -32,5 +32,5 @@ test("總覽：寬度 360px 不水平捲動", async ({ page }) => {
   await expect(page.locator("a.target-card").first()).toBeVisible();
   const scrollWidth = () => page.evaluate(() => document.documentElement.scrollWidth);
   expect(await scrollWidth()).toBeLessThanOrEqual(360);
-  await page.screenshot({ path: screenshotPath("mobile_overview"), fullPage: true });
+  await page.screenshot({ path: screenshotPath("mobile_overview"), fullPage: true, animations: "disabled" });
 });

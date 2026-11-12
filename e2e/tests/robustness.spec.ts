@@ -149,7 +149,7 @@ test.describe("mock-edge-a 停止與恢復", () => {
       await expect(banner).toHaveText(/^無法連線到此服務（offline），最後更新 \d{2}:\d{2}:\d{2}$/);
       // 保留上一次的架構，所有燈號轉灰
       await waitLamps(page, uniform(NODES, GRAY_UNKNOWN));
-      await page.screenshot({ path: screenshotPath("offline"), fullPage: true });
+      await page.screenshot({ path: screenshotPath("offline"), fullPage: true, animations: "disabled" });
     } finally {
       await startContainer(containerId);
     }

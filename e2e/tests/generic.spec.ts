@@ -40,5 +40,5 @@ test("mock-api 的巢狀 lane 正確顯示", async ({ page }) => {
   await expect(main.locator(":scope > .lane-row .lane-arrow")).toHaveCount(2);
   await expect(workers.locator(":scope > .lane-row .lane-arrow")).toHaveCount(0);
 
-  await page.screenshot({ path: screenshotPath("mock-api"), fullPage: true });
+  await page.screenshot({ path: screenshotPath("mock-api"), fullPage: true, animations: "disabled" });
 });

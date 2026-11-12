@@ -22,7 +22,7 @@ const TARGET_IDS = [
 ];
 
 const overviewTitle = (page: Page) => page.getByRole("heading", { name: "服務總覽" });
-const backLink = (page: Page) => page.getByRole("link", { name: "← 回到總覽" });
+const backLink = (page: Page) => page.getByRole("link", { name: "回到總覽" });
 
 async function expectOverview(page: Page): Promise<void> {
   await expect(overviewTitle(page)).toBeVisible();
@@ -45,7 +45,7 @@ test("總覽 → 卡片 → 服務 → 回到總覽", async ({ page }) => {
   await expect(card.locator(".card-state")).toHaveText("正常");
   await expect(card).toHaveAttribute("data-color", "green");
   await expect(targetCard(page, "raw-hang").locator(".card-state")).toHaveText("無法連線");
-  await page.screenshot({ path: screenshotPath("overview"), fullPage: true });
+  await page.screenshot({ path: screenshotPath("overview"), fullPage: true, animations: "disabled" });
 
   await card.click();
   await expect(page).toHaveURL(/#\/targets\/mock-api$/);

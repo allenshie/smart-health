@@ -73,7 +73,7 @@ test.describe("SPEC §8.2 情境（mock-edge-b）", () => {
       await expectLampsHold(page, expected);
 
       if (name === "normal") {
-        await page.screenshot({ path: screenshotPath("normal"), fullPage: true });
+        await page.screenshot({ path: screenshotPath("normal"), fullPage: true, animations: "disabled" });
       }
       if (name === "starting") {
         await page.locator('button.lamp[data-node-id="ingest"]').click();
@@ -98,7 +98,7 @@ test.describe("SPEC §8.2 情境（mock-edge-b）", () => {
         await expect(detailField(page, "狀態")).toHaveText("unavailable");
         await expect(detailField(page, "原因")).toHaveText("no_new_frame");
         await expect(detailField(page, "說明")).toHaveText(/^已 \d+ 秒沒有成功紀錄$/);
-        await page.screenshot({ path: screenshotPath("camera_down"), fullPage: true });
+        await page.screenshot({ path: screenshotPath("camera_down"), fullPage: true, animations: "disabled" });
       }
     });
   }
