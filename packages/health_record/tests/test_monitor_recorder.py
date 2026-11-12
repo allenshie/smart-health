@@ -1,5 +1,6 @@
 """HealthMonitor.recorder(node_id)（規格書 5.1、5.2）：依 id 取得 add_node() 回傳的同一個物件。"""
 import threading
+import time
 
 import pytest
 from monitor_support import WAIT_S, call_with_timeout, simple, wait_until
@@ -124,15 +125,15 @@ def test_concurrent_add_node_and_recorder(make):
     def reader(chunk):
         go.wait(WAIT_S)
         pending = list(chunk)
-        waited = 0.0
-        while pending and waited < WAIT_S:
+        # 以實際經過的時間判斷逾時。go 已經 set，go.wait() 會立刻回傳，不能用來等待。
+        deadline = time.monotonic() + WAIT_S
+        while pending and time.monotonic() < deadline:
             node_id = pending[0]
             try:
                 found[node_id] = m.recorder(node_id)
                 pending.pop(0)
             except KeyError:
-                go.wait(0.0005)  # 尚未新增：稍等再試
-                waited += 0.0005
+                time.sleep(0.0005)  # 尚未新增：稍等再試
             except BaseException as exc:  # noqa: BLE001 - 轉交給測試主執行緒
                 errors.append(exc)
                 return
