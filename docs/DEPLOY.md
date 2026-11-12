@@ -109,7 +109,7 @@ host 網路沒有 port 對應，容器直接使用主機的 port，所以 port �
     -o apps/backend/requirements.lock
   ```
 
-- **平台：** 已驗證 `linux/amd64`。`linux/arm64` **未驗證，部署到 Orin 前必須補驗**（本機沒有 buildx 與 arm64 binfmt）。
+- **平台：** 已驗證 `linux/amd64`。**`linux/arm64` 尚未驗證，部署到 arm64 主機（例如 Orin）前必須驗證。**
 
 ## 5. 開發與 e2e
 
