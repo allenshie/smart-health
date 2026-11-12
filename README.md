@@ -112,6 +112,15 @@ docker compose -f deploy/docker-compose.dev.yml down
 ```
 
 - 畫面以網址的 hash 區分：`#/` 是服務總覽（第 N 頁為 `#/?page=N`），`#/targets/<id>` 是服務畫面，例如 `http://127.0.0.1:18000/#/targets/mock-edge-b`。上一頁、下一頁、重新整理和書籤都能用。
+- 畫面（SPEC §7.1）：
+  - 燈號是發光的號誌風格，綠、黃、紅亮燈有光暈，灰色是沒亮的燈；狀態文字照常顯示，顏色不是唯一線索。
+  - 總覽卡片依總體狀態使用淡色底（正常白底、注意淡黃、異常淡紅、離線或等待淡灰）。
+  - 服務畫面左上角的圓形箭頭圖示是「回到總覽」。
+  - 主迴圈（`sequential` 且 2 個以上節點的 lane）全綠時，光點沿箭頭流動、經過的節點短暫變亮。系統設定減少動態效果或寬度 640px 以下時不流動。光點是裝飾，速度固定，不代表實際的處理量。
+
+| 服務總覽 | 服務畫面（正常） |
+|---|---|
+| ![服務總覽](docs/acceptance/screenshots/overview.png) | ![服務畫面](docs/acceptance/screenshots/normal.png) |
 
 - 專案名稱固定為 `smart-health-dev`，網路為 `smart-health-dev_default`。
 - 包含 `health-app`、`mock-edge-a`、`mock-edge-b`、`mock-api` 與 7 個 `raw-*`（每個 raw_mock 模式一個）。每個 service 都有 healthcheck，`--wait` 會等到全部 healthy。
@@ -138,7 +147,7 @@ docker compose -f deploy/docker-compose.dev.yml down
 - 掛載 `/var/run/docker.sock` 並加入 socket 的群組，讓測試透過 Docker Engine API 停止與恢復 `mock-edge-a`。**只用於本機與用完即丟的 CI runner（如 GitHub-hosted runner）；共用主機與自架 runner 不要掛載 Docker socket。** CI 的 `e2e` job 照用 `e2e/run.sh`，結束後用 `if: always()` 執行 `down`。
 - 只掛載 `e2e/` 與 `docs/acceptance/screenshots/`（以 `E2E_SCREENSHOT_DIR` 傳入），容器內讀不到 `.env`、`config/targets.yaml` 等其他檔案。
 - 情境切換透過 mock 的控制接口（`POST /scenario`）；情境測試用 `mock-edge-b`，停止與恢復用 `mock-edge-a`。
-- 截圖輸出到 `docs/acceptance/screenshots/`（`overview`、`normal`、`camera_down`、`offline`、`mock-api`、`mobile`、`mobile_overview`）。
+- 截圖輸出到 `docs/acceptance/screenshots/`（`overview`、`normal`、`camera_down`、`offline`、`mock-api`、`mobile`、`mobile_overview`），以 `animations: "disabled"` 截取靜態畫面，光點流動不會出現在截圖中。
 
 測試內容：
 
@@ -149,3 +158,4 @@ docker compose -f deploy/docker-compose.dev.yml down
 | `generic.spec.ts` | `mock-api` 的巢狀 lane |
 | `navigation.spec.ts` | 總覽 → 卡片 → 服務 → 回到總覽、直接開啟服務網址、找不到服務 |
 | `responsive.spec.ts` | 寬度 360px 時總覽與服務畫面都不水平捲動 |
+| `visual.spec.ts` | 發光燈號、卡片淡色底、回到總覽圖示、光點流動的條件，以及 reduced motion 與 640px 以下不流動 |
