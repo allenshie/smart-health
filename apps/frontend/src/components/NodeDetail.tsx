@@ -1,18 +1,13 @@
-import type { MetricValue, NodeView } from "../api/types";
+import type { NodeView } from "../api/types";
+import { EMPTY, formatMetric } from "../lib/format";
 import { stateText } from "../lib/status";
 import { formatTime } from "../lib/time";
-
-const EMPTY = "—";
 
 export interface NodeDetailProps {
   id: string;
   label: string;
   /** 沒有該節點的狀態時為 undefined。 */
   node: NodeView | undefined;
-}
-
-function metricText(value: MetricValue): string {
-  return value === null ? EMPTY : String(value);
 }
 
 /** 節點詳細面板。所有文字都以 JSX 文字節點呈現，不解析 HTML。 */
@@ -38,7 +33,7 @@ export function NodeDetail({ id, label, node }: NodeDetailProps) {
           ) : (
             <ul className="metrics">
               {metrics.map(([key, value]) => (
-                <li key={key}>{`${key} = ${metricText(value)}`}</li>
+                <li key={key}>{`${key} = ${formatMetric(value)}`}</li>
               ))}
             </ul>
           )}

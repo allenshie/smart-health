@@ -71,3 +71,59 @@ describe("NodeLamp", () => {
     expect(button.getAttribute("aria-pressed")).toBe("false");
   });
 });
+
+// SPEC §7.1「每秒次數」：metrics.rate_per_s 是數字時，顯示在狀態文字下方。
+describe("NodeLamp 每秒次數", () => {
+  const rate = (button: HTMLElement) => button.querySelector(".lamp-rate");
+
+  it("shows rate_per_s below the state text as N.NN/s", () => {
+    const { button } = renderLamp({ node: nodeView({ metrics: { rate_per_s: 3.998789 } }) });
+    const shown = rate(button);
+    expect(shown?.textContent).toBe("4.00/s");
+    const state = button.querySelector(".lamp-state")!;
+    expect(state.compareDocumentPosition(shown!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(state.textContent).toBe("ok");
+  });
+
+  it("uses the shared number format", () => {
+    const { button } = renderLamp({ node: nodeView({ metrics: { rate_per_s: -0.001 } }) });
+    expect(rate(button)?.textContent).toBe("0.00/s");
+  });
+
+  it("works for any node id and keeps other metrics out of the lamp", () => {
+    const { button } = renderLamp({
+      id: "whatever-node",
+      label: "Whatever",
+      node: nodeView({ metrics: { duration_ms: 12.3456, rate_per_s: 0.023092 } }),
+    });
+    expect(rate(button)?.textContent).toBe("0.02/s");
+    expect(button.textContent).not.toContain("12.35");
+  });
+
+  it("shows nothing without rate_per_s", () => {
+    const { button } = renderLamp({ node: nodeView({ metrics: { fps: 4 } }) });
+    expect(rate(button)).toBeNull();
+    expect(button.textContent).not.toContain("/s");
+  });
+
+  it.each([["4"], [null], [true]])("shows nothing when rate_per_s is not a number (%j)", (value) => {
+    const { button } = renderLamp({ node: nodeView({ metrics: { rate_per_s: value } }) });
+    expect(rate(button)).toBeNull();
+  });
+
+  it("shows nothing when the target is not online", () => {
+    const { button } = renderLamp({ online: false, node: nodeView({ metrics: { rate_per_s: 4 } }) });
+    expect(rate(button)).toBeNull();
+  });
+
+  it("shows nothing on backend error", () => {
+    const { button } = renderLamp({ backendError: true, node: nodeView({ metrics: { rate_per_s: 4 } }) });
+    expect(rate(button)).toBeNull();
+    expect(button.textContent).not.toContain("/s");
+  });
+
+  it("shows nothing when the node has no status", () => {
+    const { button } = renderLamp({ node: undefined });
+    expect(rate(button)).toBeNull();
+  });
+});

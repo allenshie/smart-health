@@ -61,7 +61,7 @@ describe("NodeDetail", () => {
       .getAllByRole("listitem")
       .map((li) => li.textContent);
     expect(metricLines).toEqual([
-      "fps = 12.5",
+      "fps = 12.50",
       "camera = cam-a",
       "healthy = false",
       "lag = —",
