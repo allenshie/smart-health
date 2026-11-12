@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { NodeView } from "../api/types";
 import { formatRate } from "../lib/format";
 import { lampColor, stateText } from "../lib/status";
@@ -13,6 +14,8 @@ export interface NodeLampProps {
   backendError?: boolean;
   selected: boolean;
   onSelect: (id: string) => void;
+  /** 光點流動時這個燈號的延遲（CSS 時間，例如 "1.28s"）；不在可能流動的 lane 時不給。 */
+  flowDelay?: string;
 }
 
 /** 每秒次數的標準指標名稱（SPEC §7.1）：smart-workflow 為每個節點產生，其他整合方式提供同名指標也會顯示。 */
@@ -26,7 +29,7 @@ function rateOf(node: NodeView | undefined, online: boolean, backendError: boole
 }
 
 /** 節點燈號：顏色加上狀態文字，色弱使用者也能分辨；有每秒次數時顯示在狀態文字下方。 */
-export function NodeLamp({ id, label, node, online, backendError = false, selected, onSelect }: NodeLampProps) {
+export function NodeLamp({ id, label, node, online, backendError = false, selected, onSelect, flowDelay }: NodeLampProps) {
   const color = lampColor(node, online);
   const rate = rateOf(node, online, backendError);
   return (
@@ -37,6 +40,7 @@ export function NodeLamp({ id, label, node, online, backendError = false, select
       data-node-id={id}
       aria-pressed={selected}
       onClick={() => onSelect(id)}
+      style={flowDelay === undefined ? undefined : ({ "--flow-delay": flowDelay } as CSSProperties)}
     >
       <span className="lamp-dot" aria-hidden="true" />
       <span className="lamp-label">{label}</span>{" "}

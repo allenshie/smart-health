@@ -342,3 +342,39 @@ describe("總覽：分頁", () => {
     expect(pager()!.querySelector(".pager-status")?.textContent).toBe("第 1 / 2 頁（共 25 個服務）");
   });
 });
+
+// v1.8 卡片淡色底與發光燈號（SPEC §7.1 視覺）：樣式由卡片的 lamp-<color> class 決定。
+// 這些 class 在 v1.7 已存在，以下是鎖住現有行為的測試；實際的底色與光暈由 e2e 以 getComputedStyle 確認。
+describe("總覽：卡片與統計列的顏色 class", () => {
+  const COLORS_4: Color[] = ["green", "yellow", "red", "gray"];
+
+  it("gives each card the lamp-<summary_color> class", async () => {
+    mockTargets.mockResolvedValue(COLORS_4.map((color) => target(color, color === "gray" ? "offline" : "online", color)));
+    render(<App />);
+    await advance(0);
+    for (const color of COLORS_4) {
+      expect(card(color).classList.contains(`lamp-${color}`), color).toBe(true);
+      expect(card(color).classList.contains("target-card")).toBe(true);
+      expect(card(color).querySelector(".lamp-dot")).not.toBeNull();
+    }
+  });
+
+  it("gives every card the lamp-gray class on backend error", async () => {
+    mockTargets.mockResolvedValue(COLORS_4.map((color) => target(color, "online", color)));
+    render(<App />);
+    await advance(0);
+    mockTargets.mockRejectedValue(new TypeError("Failed to fetch"));
+    await advance(INTERVAL_MS);
+    for (const c of cards()) {
+      expect([...c.classList].filter((name) => name.startsWith("lamp-"))).toEqual(["lamp-gray"]);
+    }
+  });
+
+  it("gives each statistic the lamp-<color> class", async () => {
+    mockTargets.mockResolvedValue([target("a", "online", "green")]);
+    render(<App />);
+    await advance(0);
+    const items = [...screen.getByRole("list", { name: "統計" }).querySelectorAll("li")];
+    expect(items.map((li) => li.className)).toEqual(COLORS_4.map((color) => `stat lamp-${color}`));
+  });
+});

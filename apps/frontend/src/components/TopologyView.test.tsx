@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { TopologyView as Topology } from "../api/types";
+import { flowKeyframes } from "../lib/flow";
 import { apiTopology, edgeTopology, nodeView } from "../test/fixtures";
 import { TopologyView } from "./TopologyView";
 
@@ -80,5 +81,52 @@ describe("TopologyView", () => {
       .filter((b) => b.getAttribute("aria-pressed") === "true")
       .map((b) => b.getAttribute("data-node-id"));
     expect(pressed).toEqual(["p", "p"]);
+  });
+});
+
+// v1.8 光點流動：依畫面上出現的節點數產生 keyframes（SPEC §7.1 視覺）
+describe("TopologyView keyframes", () => {
+  const lanes: Topology = {
+    ...irregular,
+    lanes: [
+      { id: "a", label: "A", parent: null, sequential: true, nodes: ["p", "q", "r"] },
+      { id: "b", label: "B", parent: "p", sequential: true, nodes: ["s", "orphan-a"] },
+      { id: "c", label: "C", parent: null, sequential: true, nodes: ["orphan-b", "q", "r"] },
+      { id: "d", label: "D", parent: null, sequential: false, nodes: ["p", "q", "r", "s"] },
+      { id: "e", label: "E", parent: null, sequential: true, nodes: ["s"] },
+    ],
+  };
+  const styleText = (container: HTMLElement) => [...container.querySelectorAll("style")].map((s) => s.textContent).join("");
+
+  it("outputs one style with one set of keyframes per node count of the lanes that can flow", () => {
+    const { container } = render(<TopologyView topology={lanes} nodes={{}} online selectedId={null} onSelect={() => {}} />);
+    expect(container.querySelectorAll("style")).toHaveLength(1);
+    expect(styleText(container)).toBe([flowKeyframes(2), flowKeyframes(3)].join("\n"));
+  });
+
+  it("outputs no style when no lane can flow", () => {
+    const still: Topology = {
+      ...irregular,
+      lanes: [
+        { id: "a", label: "A", parent: null, sequential: false, nodes: ["p", "q", "r"] },
+        { id: "b", label: "B", parent: "p", sequential: true, nodes: ["s"] },
+      ],
+    };
+    const { container } = render(<TopologyView topology={still} nodes={{}} online selectedId={null} onSelect={() => {}} />);
+    expect(container.querySelectorAll("style")).toHaveLength(0);
+  });
+
+  it("keeps the same style element and text across updates", () => {
+    const nodes = Object.fromEntries(edgeTopology.nodes.map((n) => [n.id, nodeView()]));
+    const view = (n: typeof nodes) => (
+      <TopologyView topology={{ ...edgeTopology }} nodes={n} online selectedId={null} onSelect={() => {}} />
+    );
+    const { container, rerender } = render(view(nodes));
+    const style = container.querySelector("style")!;
+    const text = style.textContent;
+    expect(text).toBe(flowKeyframes(4));
+    rerender(view({ ...nodes, infer: nodeView({ color: "red" }) }));
+    expect(container.querySelector("style")).toBe(style);
+    expect(style.textContent).toBe(text);
   });
 });

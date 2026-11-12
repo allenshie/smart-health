@@ -127,3 +127,29 @@ describe("NodeLamp 每秒次數", () => {
     expect(rate(button)).toBeNull();
   });
 });
+
+// v1.8 發光燈號（SPEC §7.1 視覺）：樣式由 lamp-<color> class 決定；鎖住現有行為的測試。
+describe("NodeLamp 顏色 class", () => {
+  it.each(["green", "yellow", "red", "gray"] as const)("gives a %s node the lamp-%s class and a dot", (color) => {
+    const { button } = renderLamp({ node: nodeView({ color }) });
+    expect(button.getAttribute("data-color")).toBe(color);
+    expect(button.classList.contains(`lamp-${color}`)).toBe(true);
+    expect(button.querySelector(".lamp-dot")?.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("uses lamp-gray when not online or on backend error", () => {
+    const { button } = renderLamp({ node: nodeView({ color: "green" }), online: false, backendError: true });
+    expect(button.classList.contains("lamp-gray")).toBe(true);
+    expect(button.classList.contains("lamp-green")).toBe(false);
+  });
+
+  it("sets --flow-delay when given", () => {
+    const { button } = renderLamp({ flowDelay: "1.28s" });
+    expect(button.style.getPropertyValue("--flow-delay")).toBe("1.28s");
+  });
+
+  it("has no inline style outside a lane that can flow", () => {
+    const { button } = renderLamp();
+    expect(button.getAttribute("style")).toBeNull();
+  });
+});

@@ -12,10 +12,17 @@
   --muted: #5b6573;
   --border: #c9d0d9;
   --panel: #ffffff;
-  --lamp-green: #1e8e3e;
-  --lamp-yellow: #f2b600;
-  --lamp-red: #d93025;
-  --lamp-gray: #80868b;
+  /* 發光燈號（SPEC §7.1 視覺）：亮燈有中心高光與同色光暈，灰色是沒亮的燈（只有內陰影）。 */
+  --lamp-border: 1px solid rgba(0, 0, 0, 0.18);
+  --lamp-green: radial-gradient(circle at 35% 30%, #c8f7d3 0, #34c759 38%, #1e8e3e 80%);
+  --lamp-green-glow: 0 0 5px 1px rgba(52, 199, 89, 0.42);
+  --lamp-yellow: radial-gradient(circle at 35% 30%, #fff3c4 0, #ffc107 40%, #c98f00 85%);
+  --lamp-yellow-glow: 0 0 5px 1px rgba(255, 193, 7, 0.45);
+  --lamp-red: radial-gradient(circle at 35% 30%, #ffd0cb 0, #ff4d3d 40%, #c5221f 85%);
+  --lamp-red-glow: 0 0 5px 1px rgba(255, 77, 61, 0.45);
+  --lamp-gray: radial-gradient(circle at 35% 30%, #eceef1 0, #bfc5cc 60%, #9aa0a6 100%);
+  --lamp-gray-glow: inset 0 1px 2px rgba(0, 0, 0, 0.22);
+  --arrow: #c5cbd3;
   --banner-bg: #fff4e5;
   --banner-border: #e8a33d;
   --error-bg: #fdecea;
@@ -55,9 +62,27 @@ body {
   overflow-wrap: anywhere;
 }
 
+/* 回到總覽：44px 圓形圖示連結，放在服務名稱左側。 */
 .back-link {
-  flex-basis: 100%;
-  color: #1a73e8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  color: var(--fg);
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+}
+
+.back-link:hover {
+  border-color: var(--fg);
+}
+
+.back-link:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 2px;
 }
 
 .target-title {
@@ -98,23 +123,28 @@ body {
 
 .stat::before {
   content: "";
-  width: 10px;
-  height: 10px;
+  flex: none;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.35);
+  border: var(--lamp-border);
   background: var(--lamp-gray);
+  box-shadow: var(--lamp-gray-glow);
 }
 
 .stat.lamp-green::before {
   background: var(--lamp-green);
+  box-shadow: var(--lamp-green-glow);
 }
 
 .stat.lamp-yellow::before {
   background: var(--lamp-yellow);
+  box-shadow: var(--lamp-yellow-glow);
 }
 
 .stat.lamp-red::before {
   background: var(--lamp-red);
+  box-shadow: var(--lamp-red-glow);
 }
 
 /* 卡片尺寸固定，每列張數依寬度自動調整，不縮小卡片。 */
@@ -141,6 +171,23 @@ body {
   border-radius: 6px;
 }
 
+/* 依 summary_color 的淡色底與邊框；綠色沿用白底與 --border。不加左側色邊。 */
+.target-card.lamp-yellow {
+  background: #fffcf2;
+  border-color: #f1e2b8;
+}
+
+.target-card.lamp-red {
+  background: #fef7f6;
+  border-color: #f3d2ce;
+}
+
+.target-card.lamp-gray {
+  background: #f8f9fa;
+  border-color: #e1e4e8;
+}
+
+/* hover 寫在底色之後，才能蓋過各顏色的邊框。 */
 .target-card:hover {
   border-color: var(--fg);
 }
@@ -157,8 +204,9 @@ body {
   min-width: 0;
 }
 
+/* 14px 燈號對齊名稱第一行的中央（行高 1.5em）。 */
 .card-head .lamp-dot {
-  margin-top: 0.35em;
+  margin-top: calc((1.5em - 14px) / 2);
 }
 
 /* 名稱最多兩行，超過用省略號；完整名稱在 title。 */
@@ -276,8 +324,45 @@ body {
   gap: 6px;
 }
 
+/* 箭頭：寬 40px 的線條，右端是同色三角形；光點在線上由左移到右。 */
 .lane-arrow {
-  color: var(--muted);
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 10px;
+}
+
+.lane-arrow::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 0;
+  right: 5px;
+  height: 2px;
+  background: var(--arrow);
+}
+
+.lane-arrow::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 6px solid var(--arrow);
+}
+
+.lane-flow-dot {
+  position: absolute;
+  top: 1px;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #7bf09a;
+  box-shadow: 0 0 8px 3px rgba(52, 199, 89, 0.75);
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* 子 lane 在 parent lane 下方縮排。 */
@@ -317,29 +402,65 @@ body {
   box-shadow: 0 0 0 1px var(--fg);
 }
 
+/* 發光燈號：節點燈號與卡片 14px，服務畫面頂端 18px（統計列見 .stat::before）。 */
 .lamp-dot {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.35);
+  border: var(--lamp-border);
   background: var(--lamp-gray);
+  box-shadow: var(--lamp-gray-glow);
   flex: none;
+}
+
+.summary-lamp .lamp-dot {
+  width: 18px;
+  height: 18px;
 }
 
 .lamp-green .lamp-dot {
   background: var(--lamp-green);
+  box-shadow: var(--lamp-green-glow);
 }
 
 .lamp-yellow .lamp-dot {
   background: var(--lamp-yellow);
+  box-shadow: var(--lamp-yellow-glow);
 }
 
 .lamp-red .lamp-dot {
   background: var(--lamp-red);
+  box-shadow: var(--lamp-red-glow);
 }
 
 .lamp-gray .lamp-dot {
   background: var(--lamp-gray);
+  box-shadow: var(--lamp-gray-glow);
+}
+
+/*
+ * 主迴圈的光點流動（SPEC §7.1 視覺）：只有 data-flowing="true" 的 lane 自己的燈號與箭頭會動，
+ * 子 lane 各自判斷（所以全部用子選擇器）。一輪的時間、keyframes 名稱（--flow-*）由 lane 提供，
+ * 延遲（--flow-delay）由每個燈號與箭頭提供；keyframes 由 TopologyView 依節點數輸出。
+ * reduced motion 或寬度 640px 以下時不流動。
+ */
+@media (prefers-reduced-motion: no-preference) and (min-width: 641px) {
+  .lane[data-flowing="true"] > .lane-row > .lane-nodes > .lamp {
+    animation: var(--flow-node) var(--flow-cycle) linear var(--flow-delay) infinite;
+  }
+
+  /* 選取中的燈號用另一組 keyframes，光暈裡保留選取框。 */
+  .lane[data-flowing="true"] > .lane-row > .lane-nodes > .lamp[aria-pressed="true"] {
+    animation-name: var(--flow-node-pressed);
+  }
+
+  .lane[data-flowing="true"] > .lane-row > .lane-nodes > .lamp > .lamp-dot {
+    animation: var(--flow-dot) var(--flow-cycle) linear var(--flow-delay) infinite;
+  }
+
+  .lane[data-flowing="true"] > .lane-row > .lane-nodes > .lane-arrow > .lane-flow-dot {
+    animation: var(--flow-arrow) var(--flow-cycle) linear var(--flow-delay) infinite;
+  }
 }
 
 /* 狀態文字與下方的每秒次數。 */

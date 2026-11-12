@@ -17,10 +17,23 @@ export interface TargetScreenProps {
   backHref: string;
 }
 
+/** 「回到總覽」：44px 圓形圖示連結（SPEC §7.1 視覺），沒有可見文字，名稱與提示由 aria-label、title 提供。 */
 function BackLink({ href }: { href: string }) {
   return (
-    <a className="back-link" href={href}>
-      ← 回到總覽
+    <a className="back-link" href={href} aria-label="回到總覽" title="回到總覽">
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M15 18l-6-6 6-6" />
+      </svg>
     </a>
   );
 }
@@ -29,7 +42,9 @@ function NotFound({ id, backHref }: { id: string; backHref: string }) {
   return (
     <>
       <header className="app-header target-header">
-        <BackLink href={backHref} />
+        <div className="target-title">
+          <BackLink href={backHref} />
+        </div>
       </header>
       <p className="not-found">
         找不到服務 <code>{id}</code>
@@ -89,18 +104,20 @@ function TargetHeader({ detail, backendError, intervalS, backHref }: TargetHeade
   const color = detail === null ? "gray" : summaryColor(detail, backendError);
   return (
     <header className="app-header target-header">
-      <BackLink href={backHref} />
-      {detail !== null && (
-        <div className="target-title">
-          <h1 className="target-name" title={detail.name}>
-            {detail.name}
-          </h1>
-          <span className={`summary-lamp lamp-${color}`} data-color={color}>
-            <span className="lamp-dot" aria-hidden="true" />
-            <span className="summary-state">{summaryText(detail, backendError)}</span>
-          </span>
-        </div>
-      )}
+      <div className="target-title">
+        <BackLink href={backHref} />
+        {detail !== null && (
+          <>
+            <h1 className="target-name" title={detail.name}>
+              {detail.name}
+            </h1>
+            <span className={`summary-lamp lamp-${color}`} data-color={color}>
+              <span className="lamp-dot" aria-hidden="true" />
+              <span className="summary-state">{summaryText(detail, backendError)}</span>
+            </span>
+          </>
+        )}
+      </div>
       <span className="last-update">{`最後更新 ${lastUpdate}（每 ${intervalS} 秒）`}</span>
     </header>
   );

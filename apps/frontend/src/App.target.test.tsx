@@ -40,7 +40,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const backLink = () => screen.getByRole("link", { name: "← 回到總覽" });
+const backLink = () => screen.getByRole("link", { name: "回到總覽" });
 const header = () => document.querySelector(".target-header")!;
 const summaryLamp = () => header().querySelector(".summary-lamp")!;
 const notFound = () => document.querySelector(".not-found");
@@ -105,6 +105,52 @@ describe("服務畫面：頂端", () => {
     expect(mockTarget).toHaveBeenCalledTimes(3);
     expect(mockTarget.mock.calls.every(([id]) => id === "mock-edge-a")).toBe(true);
     expect(mockTargets).not.toHaveBeenCalled();
+  });
+});
+
+// v1.8：「回到總覽」改成圖示連結（SPEC §7.1 視覺）
+describe("服務畫面：回到總覽圖示", () => {
+  function expectIconLink(link: HTMLElement) {
+    expect(link.tagName).toBe("A");
+    expect(link.getAttribute("aria-label")).toBe("回到總覽");
+    expect(link.getAttribute("title")).toBe("回到總覽");
+    expect(link.textContent).toBe("");
+    const svg = link.querySelector("svg")!;
+    expect(svg.getAttribute("aria-hidden")).toBe("true");
+    expect(svg.getAttribute("stroke")).toBe("currentColor");
+    expect(svg.querySelector("path")?.getAttribute("d")).toBe("M15 18l-6-6 6-6");
+  }
+
+  it("is an icon link with aria-label and title and no visible text", async () => {
+    serve(targetDetail());
+    render(<App />);
+    await advance(0);
+    expectIconLink(backLink());
+    expect(backLink().getAttribute("href")).toBe("#/");
+  });
+
+  it("sits right before the service name", async () => {
+    serve(targetDetail());
+    render(<App />);
+    await advance(0);
+    expect(backLink().nextElementSibling).toBe(screen.getByRole("heading", { name: "Mock Edge A" }));
+  });
+
+  it("is the same icon link on the not-found screen", async () => {
+    setHash("#/targets/mock-new");
+    mockTarget.mockRejectedValue(new ApiError(404));
+    render(<App />);
+    await advance(0);
+    expect(notFound()).not.toBeNull();
+    expectIconLink(backLink());
+    expect(backLink().getAttribute("href")).toBe("#/");
+  });
+
+  it("is the same icon link for an id in the wrong format", async () => {
+    setHash("#/targets/Bad");
+    render(<App />);
+    await advance(0);
+    expectIconLink(backLink());
   });
 });
 
@@ -281,5 +327,89 @@ describe("服務畫面：切換與每秒次數", () => {
     render(<App />);
     await advance(0);
     expect(document.querySelectorAll(".lamp-rate")).toHaveLength(0);
+  });
+});
+
+// v1.8 光點流動（SPEC §7.1 視覺）：經由輪詢重新判斷
+describe("服務畫面：光點流動", () => {
+  const main = () => document.querySelector<HTMLElement>('[data-lane-id="main"]')!;
+  const flowing = (id: string) => document.querySelector(`[data-lane-id="${id}"]`)?.getAttribute("data-flowing");
+  const allGreen = () => targetDetail();
+  const withNode = (id: string, color: "yellow" | "red" | "gray") => {
+    const nodes = Object.fromEntries(edgeTopology.nodes.map((n) => [n.id, nodeView()]));
+    nodes[id] = nodeView({ color, state: color === "gray" ? "waiting" : "degraded" });
+    return targetDetail({ nodes, summary_color: color });
+  };
+
+  it("flows the all-green main lane but not the single-node or non-sequential lanes", async () => {
+    serve(allGreen());
+    render(<App />);
+    await advance(0);
+    expect(flowing("main")).toBe("true");
+    expect(flowing("ingest-bg")).toBe("false");
+    expect(flowing("stream-bg")).toBe("false");
+  });
+
+  it("switches after each poll: node not green, not online, backend error, then back", async () => {
+    serve(allGreen());
+    render(<App />);
+    await advance(0);
+    expect(flowing("main")).toBe("true");
+
+    serve(withNode("stream", "yellow"));
+    await advance(INTERVAL_MS);
+    expect(flowing("main")).toBe("false");
+
+    serve(allGreen());
+    await advance(INTERVAL_MS);
+    expect(flowing("main")).toBe("true");
+
+    serve(targetDetail({ connection: "stale", summary_color: "gray" }));
+    await advance(INTERVAL_MS);
+    expect(flowing("main")).toBe("false");
+
+    serve(allGreen());
+    await advance(INTERVAL_MS);
+    expect(flowing("main")).toBe("true");
+
+    mockTarget.mockRejectedValue(new TypeError("Failed to fetch"));
+    await advance(INTERVAL_MS);
+    expect(flowing("main")).toBe("false");
+
+    serve(allGreen());
+    await advance(INTERVAL_MS);
+    expect(flowing("main")).toBe("true");
+  });
+
+  it("keeps the same lamp and arrow elements over two polls", async () => {
+    serve(allGreen());
+    render(<App />);
+    await advance(0);
+    const lamps = [...main().querySelectorAll(".lamp")];
+    const arrows = [...main().querySelectorAll(".lane-arrow")];
+    const dots = [...main().querySelectorAll(".lane-flow-dot")];
+    const style = document.querySelector(".topology style");
+    expect(lamps).toHaveLength(6);
+    expect(arrows).toHaveLength(3);
+
+    await advance(INTERVAL_MS);
+    await advance(INTERVAL_MS);
+    expect(mockTarget).toHaveBeenCalledTimes(3);
+    expect([...main().querySelectorAll(".lamp")]).toEqual(lamps);
+    expect([...main().querySelectorAll(".lane-arrow")]).toEqual(arrows);
+    expect([...main().querySelectorAll(".lane-flow-dot")]).toEqual(dots);
+    expect(document.querySelector(".topology style")).toBe(style);
+    expect(main().getAttribute("data-flowing")).toBe("true");
+  });
+
+  it("keeps the selection while flowing", async () => {
+    serve(allGreen());
+    render(<App />);
+    await advance(0);
+    fireEvent.click(lamp("infer"));
+    await advance(INTERVAL_MS);
+    expect(flowing("main")).toBe("true");
+    expect(lamp("infer").getAttribute("aria-pressed")).toBe("true");
+    expect(detailRegion()).not.toBeNull();
   });
 });
