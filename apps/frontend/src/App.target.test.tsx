@@ -19,7 +19,7 @@ import {
   setHash,
   summaries,
 } from "./test/appHarness";
-import { apiTopology, edgeTopology, nodeView, targetDetail } from "./test/fixtures";
+import { apiTopology, edgeTopology, nodeView, summaryOf, targetDetail } from "./test/fixtures";
 
 vi.mock("./api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./api/client")>();
@@ -382,7 +382,9 @@ describe("服務畫面：光點流動", () => {
   });
 
   it("keeps the same lamp and arrow elements over two polls", async () => {
-    serve(allGreen());
+    // 每次輪詢都回傳新的物件（和真實的 fetch 一樣），React 才會真的重新 render
+    mockTargets.mockImplementation(async () => [summaryOf(allGreen())]);
+    mockTarget.mockImplementation(async () => structuredClone(allGreen()));
     render(<App />);
     await advance(0);
     const lamps = [...main().querySelectorAll(".lamp")];
@@ -395,10 +397,13 @@ describe("服務畫面：光點流動", () => {
     await advance(INTERVAL_MS);
     await advance(INTERVAL_MS);
     expect(mockTarget).toHaveBeenCalledTimes(3);
-    expect([...main().querySelectorAll(".lamp")]).toEqual(lamps);
-    expect([...main().querySelectorAll(".lane-arrow")]).toEqual(arrows);
-    expect([...main().querySelectorAll(".lane-flow-dot")]).toEqual(dots);
-    expect(document.querySelector(".topology style")).toBe(style);
+    // toEqual 對 DOM 節點只比結構，這裡逐一比對是同一個元素
+    const same = (now: Element[], before: Element[]) =>
+      now.length === before.length && now.every((el, i) => el === before[i]);
+    expect(same([...main().querySelectorAll(".lamp")], lamps)).toBe(true);
+    expect(same([...main().querySelectorAll(".lane-arrow")], arrows)).toBe(true);
+    expect(same([...main().querySelectorAll(".lane-flow-dot")], dots)).toBe(true);
+    expect(document.querySelector(".topology style") === style).toBe(true);
     expect(main().getAttribute("data-flowing")).toBe("true");
   });
 

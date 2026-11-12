@@ -69,6 +69,11 @@ describe("LaneRow", () => {
 });
 
 // v1.8 光點流動（SPEC §7.1 視覺）
+function expectSame(now: Element[], before: Element[]) {
+  expect(now).toHaveLength(before.length);
+  now.forEach((el, i) => expect(el === before[i], `元素 ${i}`).toBe(true));
+}
+
 describe("LaneRow 流動", () => {
   const green = (ids: string[]) => Object.fromEntries(ids.map((id) => [id, nodeView()]));
   const seq = (ids: string[], sequential = true): LaneNode => ({
@@ -127,8 +132,9 @@ describe("LaneRow 流動", () => {
 
     rerender(<LaneRow lane={{ ...lane }} nodes={green(["a", "b", "c"])} online {...props} />);
     expect(laneEl(container).getAttribute("data-flowing")).toBe("true");
-    expect([...container.querySelectorAll(".lamp")]).toEqual(lamps);
-    expect([...container.querySelectorAll(".lane-arrow")]).toEqual(arrows);
+    // toEqual 對 DOM 節點只比結構，這裡逐一比對是同一個元素
+    expectSame([...container.querySelectorAll(".lamp")], lamps);
+    expectSame([...container.querySelectorAll(".lane-arrow")], arrows);
   });
 
   it("sets the cycle and keyframes of n nodes on the lane and the delay of each lamp and arrow", () => {
