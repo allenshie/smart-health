@@ -31,13 +31,14 @@ targets:
 | `evaluation_stale_after_s` | `10` | 被監控服務的 `evaluation_age_s` 超過此值，該目標顯示 `stale`；必須是正數 |
 | `history_limit` | `200` | 每個目標在記憶體中保留的狀態變化筆數上限，必須是正整數；後端重啟就會消失 |
 | `max_response_bytes` | `1048576` | 單次回應本文的上限（位元組），必須是正整數。`Content-Length` 已超過上限時不讀本文；讀取中超過上限就停止讀取。兩者都判為 `invalid_response` |
-| `targets[].id` | 必填 | 符合 `^[a-z][a-z0-9_-]*$`，不可重複 |
-| `targets[].name` | 必填 | 畫面顯示名稱，非空字串 |
+| `targets[].id` | 必填 | 符合 `^[a-z][a-z0-9_-]*$`，不可重複；也是服務畫面網址 `#/targets/<id>` 的一部分 |
+| `targets[].name` | 必填 | 畫面顯示名稱，非空字串；總覽卡片最多顯示兩行，超過的部分以省略號表示 |
 | `targets[].base_url` | 必填 | 被監控服務的位址（`http` 或 `https`，含主機，不可含 query、fragment 或帳密）；後端會在後面加上 `/topology` 與 `/status` |
 
 重點：
 
 - **`base_url` 只存在後端**，不會出現在任何 API 回應，前端也看不到。錯誤也只以連線代碼（`offline`、`stale` 等）呈現，不回傳原始錯誤字串。
+- **`targets` 的順序就是「服務總覽」卡片的順序**（每頁 24 個）。前端有兩個畫面：總覽 `http://<host>:<port>/#/`（第 N 頁為 `#/?page=N`）與服務畫面 `#/targets/<id>`，都可以加入書籤。修改目標的 `id` 會讓舊的服務畫面書籤顯示「找不到服務」。
 - **設定錯誤時啟動會失敗**，並指出欄位路徑：格式錯誤、未知欄位、`id` 重複或格式錯誤、數值不是正數、`base_url` 不是 http 或 https，都會讓後端啟動失敗（`restart: unless-stopped` 會讓容器反覆重啟）。`docker compose -f deploy/docker-compose.yml logs health-app` 可看到 `ConfigError` 與欄位路徑。
 - 每個目標獨立拉取，慢或掛掉的目標不影響其他目標；後端不跟隨重新導向。
 - **`base_url` 不可含帳密**（例如 `http://user:pass@host`），否則啟動失敗。`/status` 與 `/topology` 不需要驗證，含帳密的網址也可能被 HTTP client 的 log 原樣印出。
@@ -89,7 +90,7 @@ host 網路沒有 port 對應，容器直接使用主機的 port，所以 port �
 
 **Health App 沒有登入驗證機制。** 任何連得到它的人都能看到所有目標的名稱與狀態。因此：
 
-- 只能放在**受信任的內網**，或放在有驗證的**反向代理**之後。
+- 只能放在**受信任的內網**，或放在有驗證的**反向代理**之後。畫面以網址的 hash（`#/…`）區分，hash 不會送到伺服器，反向代理不需要額外的路徑改寫規則。
 - **不要直接暴露到網際網路。**
 - 被監控服務的 `/topology`、`/status` 同樣沒有驗證，只應開放給 Health App 所在的網路。
 - 後端只驗證並轉傳被監控服務的內容，**不會重新遮蔽 `message`**；遮蔽由各服務端負責，見 `docs/INTEGRATION.md`。

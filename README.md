@@ -3,7 +3,7 @@
 通用的服務健康狀態系統，由三部分組成：
 
 - **函式庫 `smart-health-record`**（`packages/health_record`）：在各服務內記錄事實（開始、成功、錯誤、致命故障、指標），由獨立的評估執行緒推導節點狀態，並以 `GET /topology`、`GET /status` 提供。只使用 Python 標準函式庫。
-- **Health App**（`apps/`）：後端（FastAPI）定期拉取各服務的 `/topology` 與 `/status`，前端（React + Vite）顯示架構圖與燈號。
+- **Health App**（`apps/`）：後端（FastAPI）定期拉取各服務的 `/topology` 與 `/status`，前端（React + Vite）分成兩層：「服務總覽」以卡片列出所有服務的總體狀態，點進「服務畫面」查看架構圖、燈號與節點詳細資料。
 - **通用契約**（`contract/`）：兩個接口的 JSON Schema 與 fixtures；不使用函式庫的服務只要符合契約也能被監控。
 
 ## 文件
@@ -107,9 +107,11 @@ docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
 
 ```bash
 docker compose -f deploy/docker-compose.dev.yml up --build --wait
-# 瀏覽 http://127.0.0.1:18000
+# 瀏覽 http://127.0.0.1:18000（服務總覽）
 docker compose -f deploy/docker-compose.dev.yml down
 ```
+
+- 畫面以網址的 hash 區分：`#/` 是服務總覽（第 N 頁為 `#/?page=N`），`#/targets/<id>` 是服務畫面，例如 `http://127.0.0.1:18000/#/targets/mock-edge-b`。上一頁、下一頁、重新整理和書籤都能用。
 
 - 專案名稱固定為 `smart-health-dev`，網路為 `smart-health-dev_default`。
 - 包含 `health-app`、`mock-edge-a`、`mock-edge-b`、`mock-api` 與 7 個 `raw-*`（每個 raw_mock 模式一個）。每個 service 都有 healthcheck，`--wait` 會等到全部 healthy。
@@ -136,7 +138,7 @@ docker compose -f deploy/docker-compose.dev.yml down
 - 掛載 `/var/run/docker.sock` 並加入 socket 的群組，讓測試透過 Docker Engine API 停止與恢復 `mock-edge-a`。**只用於本機與用完即丟的 CI runner（如 GitHub-hosted runner）；共用主機與自架 runner 不要掛載 Docker socket。** CI 的 `e2e` job 照用 `e2e/run.sh`，結束後用 `if: always()` 執行 `down`。
 - 只掛載 `e2e/` 與 `docs/acceptance/screenshots/`（以 `E2E_SCREENSHOT_DIR` 傳入），容器內讀不到 `.env`、`config/targets.yaml` 等其他檔案。
 - 情境切換透過 mock 的控制接口（`POST /scenario`）；情境測試用 `mock-edge-b`，停止與恢復用 `mock-edge-a`。
-- 截圖輸出到 `docs/acceptance/screenshots/`（`normal`、`camera_down`、`offline`、`mock-api`、`mobile`）。
+- 截圖輸出到 `docs/acceptance/screenshots/`（`overview`、`normal`、`camera_down`、`offline`、`mock-api`、`mobile`、`mobile_overview`）。
 
 測試內容：
 
@@ -145,4 +147,5 @@ docker compose -f deploy/docker-compose.dev.yml down
 | `scenarios.spec.ts` | SPEC §8.2 的 14 個情境，驗證每個節點的狀態文字與顏色 |
 | `robustness.spec.ts` | raw_mock 7 個模式、`mock-edge-a` 停止與恢復、hang 不影響其他目標 |
 | `generic.spec.ts` | `mock-api` 的巢狀 lane |
-| `responsive.spec.ts` | 寬度 360px 時頁面不水平捲動 |
+| `navigation.spec.ts` | 總覽 → 卡片 → 服務 → 回到總覽、直接開啟服務網址、找不到服務 |
+| `responsive.spec.ts` | 寬度 360px 時總覽與服務畫面都不水平捲動 |
