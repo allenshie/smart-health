@@ -2,41 +2,8 @@
 
 - **狀態：** 定稿
 - **版本：** 1.8（2026-11-12）
-- **實作計畫：** [PLAN.md](PLAN.md)
 
-**1.8 變更摘要：** 依 Edge 健康回報的階段 A5 變更需求，只改前端、e2e 與文件，後端、函式庫、契約與模擬服務不變，前端版本升到 `0.3.0`。第 7.1 節新增「視覺」小節：
-- 發光燈號：亮燈（綠、黃、紅）有中心高光與同色光暈，灰色是沒亮的燈；套用在節點燈號、總覽卡片、服務畫面頂端的總體燈號與統計列。
-- 總覽卡片依 `summary_color` 使用淡色底與邊框，不加左側色邊。
-- 「回到總覽」改成 44px 的圓形圖示連結，放在服務名稱左側，`aria-label` 與 `title` 為「回到總覽」。
-- 主迴圈的光點流動：`sequential` 且有 2 個以上節點的 lane 全綠時，光點沿箭頭流動、經過的節點短暫變亮；只用 CSS 動畫，輪詢不會讓動畫重新開始；reduced motion 或寬度 640px 以下時不流動。
-- 第 11 節補上視覺的驗收項目。
-
-**1.7 變更摘要：** 依 Edge 健康回報的階段 A4 變更需求，只改前端與文件，後端、函式庫與契約不變，前端版本升到 `0.2.0`：
-- 前端分成「服務總覽」與「服務畫面」兩層，以網址的 hash 區分，支援上一頁、下一頁、重新整理和書籤（第 7.1 節）。移除目標下拉選單，以及預設顯示第一個目標、目標消失時改選第一個的行為。
-- 總覽：統計列依全部目標的 `summary_color` 計數；每個目標一張固定尺寸的卡片連結；每頁 24 個並分頁；只輪詢 `/api/targets`（第 7.1 節）。
-- 服務畫面：「回到總覽」回到最後看過的總覽頁；找不到服務時顯示訊息並繼續輪詢；只輪詢 `/api/targets/{id}`（第 7.1 節）。
-- 指標值統一格式：非整數顯示小數 2 位；節點的 `rate_per_s` 指標顯示在燈號下方，一律小數 2 位，單位 `/s`（第 7.1 節）。
-- 第 11 節補上畫面的驗收項目。
-
-**1.6 變更摘要：** 依 Edge 健康回報的階段 A3 變更需求，函式庫升到 `0.1.1`，只新增 API，和 `0.1.0` 相容：
-- `HealthMonitor` 新增 `recorder(node_id)`（第 5.1、5.2 節）：依節點 id 取得 `add_node()` 回傳的同一個 `NodeRecorder`，讓整合框架不必自行保存回傳值，也不必依賴私有屬性。
-- 套件採用 MIT 授權：新增 `LICENSE`，`pyproject.toml` 以 PEP 639 寫法加上 `license`、`license-files`，並加上 `authors`（只有名稱）與 classifiers（第 5 節）。
-- sdist 只包含建置需要的檔案：`src/`、`README.md`、`LICENSE`、`pyproject.toml`（第 5 節）。測試仍在 repo 中執行。
-
-**1.5 變更摘要：** 依 Edge 健康回報的階段 A 變更需求：
-- `HealthMonitor` 新增 `wait_for_ready` 與 `mark_ready()`（第 3.1、5.1、5.2 節）。就緒前只判定 fatal；`wait_for_ready=True` 時，時間相關的判斷從就緒時刻起算；`wait_for_ready=False` 完全沿用 1.4 的公式。
-- `/status` 新增非必要欄位 `ready_at`，`schema_version` 維持 1（第 4.3 節）。
-- 模擬架構的依賴與情境改用角色名稱：`ffmpeg` → `stream_sink`、`mqtt` → `messaging`，情境 `mqtt_down` → `messaging_down`、`mediamtx_down` → `stream_sink_down`、`camera_and_mqtt_down` → `camera_and_messaging_down`（第 4.2、8.1、8.2 節）。
-- 模擬服務新增 `loading`、`loading_fatal` 情境（第 8.2 節）。
-- `NodeRecorder` 新增 `record_skip()`（第 5.1、5.2、5.3 節）：跳過（例如沒有新畫面）只清除進行中狀態，不算成功，避免節點被誤判成 stuck。
-
-**1.4 變更摘要：** 依最終審查驗收，第 10 節 App 的 CI 路徑加入 `packages/**`：後端整合測試、模擬服務、mock 映像檔與 e2e 都直接使用函式庫原始碼，函式庫改動也要觸發。
-
-**1.3 變更摘要：** 依最終審查加入後端的回應大小上限 `max_response_bytes`（第 6、6.1 節）：被監控服務的回應超過上限時停止讀取，判為 `invalid_response`，避免單一服務的異常回應耗盡後端記憶體。
-
-**1.2 變更摘要：** 依驗收關卡 1 回饋補強第 4.4 節的遮蔽：`Authorization` 標頭保留 scheme、遮蔽憑證；關鍵字中的 `-` 和 `_` 視為相同。CI 加入 Python lint（ruff）；導入指南要列出遮蔽的已知限制。
-
-**1.1 變更摘要：** 定義第一輪評估前與 `start()` 前的回應；明確 `id` 格式的適用範圍；定義非 `online` 時的節點內容；定義 `starting` 情境的模擬方式；補上 `config/targets.dev.yaml` 例外與 `limit` 的邊界行為。
+各版本的變更見 [CHANGELOG.md](../CHANGELOG.md)。
 
 ## 1. 目標與範圍
 
@@ -56,10 +23,10 @@
 
 Health App 掛掉不能影響被監控服務，只會看不到燈號。
 
-### 不在這次範圍內
+### 不在範圍內
 
 - 修改 Edge、App、`edge_core`、`integration_core`、`smart_workflow`、`monitoring-service`。
-- 連接真實的 Edge 或 App。本階段一律使用模擬資料，全部測試通過後才另外導入。
+- 連接真實的 Edge 或 App。本 repo 的開發與測試一律使用模擬資料（第 8 節）。
 - 取代 k8s 的 `/startupz`、`/healthz`、`/readyz`。
 - 終止或重啟被監控服務。本專案只回報狀態。
 - 登入驗證、長期歷史儲存、告警通知。
@@ -705,7 +672,7 @@ python -m mock_service --profile edge --instance mock-edge-a --host 0.0.0.0 \
 ```text
 smart_health/
 ├── README.md
-├── SESSION.md                     # 本專案的進度紀錄
+├── CHANGELOG.md                   # 各版本的變更
 ├── contract/                      # 契約文件、JSON Schema、fixtures
 ├── packages/health_record/        # smart-health-record 函式庫
 │   ├── pyproject.toml
@@ -727,7 +694,7 @@ smart_health/
 │   ├── docker-compose.yml         # Health App 實體
 │   ├── docker-compose.host.yml    # host 網路，用於 Orin 這類環境
 │   └── docker-compose.dev.yml     # Health App + 所有模擬服務
-├── docs/
+├── docs/                          # 規格書、導入指南、部署說明與截圖
 └── .github/workflows/
 ```
 
@@ -735,14 +702,14 @@ smart_health/
 
 ## 10. 發布與部署
 
-- 映像檔支援 `linux/amd64`、`linux/arm64`，因為部署主機尚未決定，可能是 Orin。本機環境目前無法建置 arm64，實作階段只驗證 amd64；arm64 標明「未驗證，部署到 Orin 前必須補驗」，這項要求仍然有效。
+- 映像檔支援 `linux/amd64`、`linux/arm64`，因為部署主機尚未決定，可能是 Orin。`linux/amd64` 已驗證；`linux/arm64` 尚未驗證，部署到 arm64 主機（例如 Orin）前必須驗證。
 - 提供 `docker-compose.host.yml`：已知部分 Orin 的 kernel 沒有 iptables `raw` 表，Docker bridge 網路無法建立。
 - 函式庫 tag 用 `record-vX.Y.Z`，App tag 用 `app-vX.Y.Z`，兩者獨立。
 - CI 依路徑分開：
   - `packages/**`、`contract/**`：函式庫測試（Python 3.10、3.11），build，`twine check`。
   - Python lint：用固定版本的 ruff（0.8.4）檢查 `packages`、`contract`、`examples`、`apps`，兩個 workflow 都執行。
   - `apps/**`、`contract/**`、`packages/**`、`deploy/**`、`examples/**`、`e2e/**`：後端測試、前端 lint 和測試和建置、映像檔建置、e2e。
-- CI 不自動發布。**PyPI 發布和建立遠端 repo 都由使用者操作。**
+- CI 不自動發布。**PyPI 發布由維護者手動執行。**
 
 ## 11. 驗收標準
 
