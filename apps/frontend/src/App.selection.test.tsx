@@ -2,8 +2,8 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { INTERVAL_MS, advance, detailRegion, lamp, mockTarget, mockTargets, resetMocks, serve } from "./test/appHarness";
-import { apiTopology, edgeTopology, nodeView, summaryOf, targetDetail } from "./test/fixtures";
+import { INTERVAL_MS, advance, detailRegion, lamp, mockTarget, resetMocks, serve, setHash } from "./test/appHarness";
+import { apiTopology, edgeTopology, nodeView, targetDetail } from "./test/fixtures";
 
 vi.mock("./api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./api/client")>();
@@ -16,17 +16,20 @@ vi.mock("./api/client", async (importOriginal) => {
   };
 });
 
-beforeEach(resetMocks);
+// v1.7 起沒有預設目標：以服務網址進入服務畫面（只改進入方式）。
+beforeEach(() => {
+  resetMocks();
+  setHash("#/targets/mock-edge-a");
+});
 afterEach(() => {
   vi.useRealTimers();
 });
 
 describe("App 選取", () => {
-  it("shows the selector and last update time from config and targets", async () => {
+  it("shows the last update time from config and the target", async () => {
     serve(targetDetail());
     render(<App />);
     await advance(0);
-    expect(screen.getByRole("combobox", { name: "服務：" })).toBeTruthy();
     expect(screen.getByText("最後更新 10:32:15（每 5 秒）")).toBeTruthy();
     expect(mockTarget).toHaveBeenCalledWith("mock-edge-a");
   });
@@ -94,63 +97,5 @@ describe("App 選取", () => {
     await advance(INTERVAL_MS);
     expect(lamp("infer").getAttribute("aria-pressed")).toBe("false");
     expect(detailRegion()).toBeNull();
-  });
-
-  it("keeps the chosen target, clears node selection on switch, and falls back to the first", async () => {
-    const a = targetDetail();
-    const b = targetDetail({ id: "mock-api", name: "Mock API", topology: apiTopology });
-    mockTargets.mockResolvedValue([summaryOf(a), summaryOf(b)]);
-    mockTarget.mockImplementation(async (id) => (id === b.id ? b : a));
-    render(<App />);
-    await advance(0);
-    fireEvent.click(lamp("infer"));
-
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "mock-api" } });
-    await advance(0);
-    expect(lamp("gateway")).toBeTruthy();
-    expect(detailRegion()).toBeNull();
-
-    await advance(INTERVAL_MS);
-    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("mock-api");
-
-    mockTargets.mockResolvedValue([summaryOf(a)]);
-    await advance(INTERVAL_MS);
-    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("mock-edge-a");
-    expect(lamp("infer")).toBeTruthy();
-  });
-
-  it("stays on the fallback target when the chosen one comes back", async () => {
-    const a = targetDetail();
-    const b = targetDetail({ id: "mock-api", name: "Mock API", topology: apiTopology });
-    mockTargets.mockResolvedValue([summaryOf(a), summaryOf(b)]);
-    mockTarget.mockImplementation(async (id) => (id === b.id ? b : a));
-    render(<App />);
-    await advance(0);
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "mock-api" } });
-    await advance(0);
-
-    mockTargets.mockResolvedValue([summaryOf(a)]);
-    await advance(INTERVAL_MS);
-    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("mock-edge-a");
-
-    mockTargets.mockResolvedValue([summaryOf(a), summaryOf(b)]);
-    await advance(INTERVAL_MS);
-    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("mock-edge-a");
-    expect(lamp("infer")).toBeTruthy();
-  });
-
-  it("keeps the initially shown target when the list order changes", async () => {
-    const a = targetDetail();
-    const b = targetDetail({ id: "mock-api", name: "Mock API", topology: apiTopology });
-    mockTargets.mockResolvedValue([summaryOf(a), summaryOf(b)]);
-    mockTarget.mockImplementation(async (id) => (id === b.id ? b : a));
-    render(<App />);
-    await advance(0);
-    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("mock-edge-a");
-
-    mockTargets.mockResolvedValue([summaryOf(b), summaryOf(a)]);
-    await advance(INTERVAL_MS);
-    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("mock-edge-a");
-    expect(lamp("infer")).toBeTruthy();
   });
 });

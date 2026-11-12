@@ -4,7 +4,7 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { REQUEST_TIMEOUT_MS } from "./api/client";
-import { INTERVAL_MS, advance } from "./test/appHarness";
+import { INTERVAL_MS, advance, setHash } from "./test/appHarness";
 import { summaryOf, targetDetail } from "./test/fixtures";
 
 function json(body: unknown): Response {
@@ -33,12 +33,15 @@ function stubBackend() {
   return { fn, state };
 }
 
+// 服務畫面只輪詢 /api/targets/{id}（v1.7），因此計算該目標詳細資料的請求次數。
 function targetCalls(fn: ReturnType<typeof stubBackend>["fn"]): number {
-  return fn.mock.calls.filter(([url]) => url === "/api/targets").length;
+  return fn.mock.calls.filter(([url]) => url === "/api/targets/mock-edge-a").length;
 }
 
 beforeEach(() => {
   vi.useFakeTimers();
+  // v1.7 起沒有預設目標：以服務網址進入服務畫面（只改進入方式）。
+  setHash("#/targets/mock-edge-a");
 });
 
 afterEach(() => {

@@ -2,7 +2,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { INTERVAL_MS, advance, detailRegion, lamp, mockConfig, mockTarget, mockTargets, resetMocks, serve } from "./test/appHarness";
+import { INTERVAL_MS, advance, detailRegion, lamp, mockConfig, mockTarget, mockTargets, resetMocks, serve, setHash } from "./test/appHarness";
 import { edgeTopology, nodeView, targetDetail } from "./test/fixtures";
 
 vi.mock("./api/client", async (importOriginal) => {
@@ -16,7 +16,11 @@ vi.mock("./api/client", async (importOriginal) => {
   };
 });
 
-beforeEach(resetMocks);
+// v1.7 起沒有預設目標：以服務網址進入服務畫面（只改進入方式）。
+beforeEach(() => {
+  resetMocks();
+  setHash("#/targets/mock-edge-a");
+});
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -83,6 +87,7 @@ describe("App 連線、錯誤", () => {
   });
 
   it("retries config every 3 seconds and waits for it before polling targets", async () => {
+    setHash("#/"); // 在總覽執行：總覽輪詢的是目標清單
     mockConfig.mockReset().mockRejectedValueOnce(new TypeError("Failed to fetch"));
     mockConfig.mockResolvedValue({ poll_interval_s: 5 });
     serve(targetDetail());
@@ -113,17 +118,6 @@ describe("App 連線、錯誤", () => {
     );
   });
 
-  it("grays lamps when only the target list fails", async () => {
-    serve(targetDetail());
-    render(<App />);
-    await advance(0);
-    mockTargets.mockRejectedValue(new TypeError("Failed to fetch"));
-    await advance(INTERVAL_MS);
-    expect(screen.getAllByRole("alert")).toHaveLength(1);
-    expect(screen.getAllByRole("button").every((b) => b.getAttribute("data-color") === "gray")).toBe(true);
-    expect(mockTarget.mock.calls.length).toBeGreaterThan(1); // 詳細資料仍成功更新
-  });
-
   it("shows 未知 as lamp text on backend error, keeps the detail, and recovers", async () => {
     serve(targetDetail());
     render(<App />);
@@ -147,14 +141,5 @@ describe("App 連線、錯誤", () => {
     expect(screen.queryByRole("alert")).toBeNull();
     expect(lamp("infer").textContent).toContain("ok");
     expect(lamp("infer").textContent).not.toContain("未知");
-  });
-
-  it("shows 未知 as lamp text when only the target list fails", async () => {
-    serve(targetDetail());
-    render(<App />);
-    await advance(0);
-    mockTargets.mockRejectedValue(new TypeError("Failed to fetch"));
-    await advance(INTERVAL_MS);
-    expect(lamp("ingest").textContent).toContain("未知");
   });
 });

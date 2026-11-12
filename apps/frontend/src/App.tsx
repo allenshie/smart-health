@@ -1,14 +1,12 @@
 import { useState } from "react";
-import { fetchTargets } from "./api/client";
-import type { TargetSummary } from "./api/types";
 import { BackendError } from "./components/BackendError";
-import { TargetPanel } from "./components/TargetPanel";
-import { TargetSelector } from "./components/TargetSelector";
+import { OverviewScreen } from "./components/OverviewScreen";
+import { TargetScreen } from "./components/TargetScreen";
 import { useConfig } from "./hooks/useConfig";
-import { usePolling } from "./hooks/usePolling";
-import { formatTime } from "./lib/time";
+import { useHashRoute } from "./hooks/useHashRoute";
+import { overviewHash } from "./lib/route";
 
-/** 先取得 /api/config，取得之前不輪詢目標。 */
+/** 先取得 /api/config，取得之前不輪詢。 */
 export default function App() {
   const { config, error } = useConfig();
   if (config === null) {
@@ -19,44 +17,32 @@ export default function App() {
       </main>
     );
   }
-  return <Dashboard intervalS={config.poll_interval_s} />;
+  return <Screens intervalS={config.poll_interval_s} />;
 }
 
-/** 所選目標仍在清單中就保留，否則改選第一個。 */
-function resolveTarget(targets: TargetSummary[], chosen: string | null): TargetSummary | undefined {
-  return targets.find((t) => t.id === chosen) ?? targets[0];
-}
-
-function Dashboard({ intervalS }: { intervalS: number }) {
-  const intervalMs = intervalS * 1000;
-  const { data: targets, error, lastSuccessAt } = usePolling(fetchTargets, intervalMs);
-  const [chosenId, setChosenId] = useState<string | null>(null);
-  const target = targets === null ? undefined : resolveTarget(targets, chosenId);
-  // 初始選擇或 fallback 時，把實際顯示的目標同步回 state，之後清單順序改變或原目標重新出現都不會跳動。
-  // （render 期間調整 state，React 會立即重新 render。）
-  if (target !== undefined && target.id !== chosenId) {
-    setChosenId(target.id);
+/**
+ * 依網址 hash 顯示總覽或服務畫面（SPEC §7.1）。記住這次瀏覽中最後看過的總覽頁，
+ * 作為服務畫面「回到總覽」的目的地；直接開啟服務網址時為第 1 頁。
+ */
+function Screens({ intervalS }: { intervalS: number }) {
+  const { route, replace } = useHashRoute();
+  const [lastPage, setLastPage] = useState(1);
+  // 總覽頁碼改變時記下（render 期間調整 state，React 會立即重新 render）。
+  if (route.kind === "overview" && route.page !== lastPage) {
+    setLastPage(route.page);
   }
-  const lastUpdate =
-    target?.last_success_at == null ? "尚未取得" : formatTime(target.last_success_at);
 
   return (
     <main className="app">
-      <header className="app-header">
-        {targets !== null && target !== undefined && (
-          <TargetSelector targets={targets} selectedId={target.id} onChange={setChosenId} />
-        )}
-        <span className="last-update">{`最後更新 ${lastUpdate}（每 ${intervalS} 秒）`}</span>
-      </header>
-      {error !== null && <BackendError lastSuccessAt={lastSuccessAt} />}
-      {targets === null && error === null && <p className="loading">載入中…</p>}
-      {targets !== null && targets.length === 0 && <p className="empty">尚未設定任何服務</p>}
-      {target !== undefined && (
-        <TargetPanel
-          key={target.id}
-          targetId={target.id}
-          intervalMs={intervalMs}
-          suppressError={error !== null}
+      {route.kind === "overview" ? (
+        <OverviewScreen intervalS={intervalS} page={route.page} replace={replace} />
+      ) : (
+        <TargetScreen
+          key={route.id}
+          id={route.id}
+          valid={route.valid}
+          intervalS={intervalS}
+          backHref={overviewHash(lastPage)}
         />
       )}
     </main>

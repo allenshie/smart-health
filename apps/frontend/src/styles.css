@@ -37,7 +37,7 @@ body {
   padding: 12px 16px 24px;
 }
 
-/* 頂部：選單與最後更新，窄螢幕時換行。 */
+/* 頂部：標題（或回到總覽、服務名稱與總體燈號）與最後更新，窄螢幕時換行。 */
 .app-header {
   display: flex;
   flex-wrap: wrap;
@@ -47,19 +47,161 @@ body {
   margin-bottom: 12px;
 }
 
-.target-selector {
+.screen-title,
+.target-name {
+  margin: 0;
+  font-size: 1.25rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.back-link {
+  flex-basis: 100%;
+  color: #1a73e8;
+}
+
+.target-title {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 4px 12px;
   min-width: 0;
   max-width: 100%;
 }
 
-.target-selector select {
+/* 總體燈號：只是顯示，不是按鈕。 */
+.summary-lamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.not-found {
+  overflow-wrap: anywhere;
+}
+
+/* 總覽的統計列：顏色點加上文字與數字。 */
+.overview-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stat::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  background: var(--lamp-gray);
+}
+
+.stat.lamp-green::before {
+  background: var(--lamp-green);
+}
+
+.stat.lamp-yellow::before {
+  background: var(--lamp-yellow);
+}
+
+.stat.lamp-red::before {
+  background: var(--lamp-red);
+}
+
+/* 卡片尺寸固定，每列張數依寬度自動調整，不縮小卡片。 */
+.target-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.target-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  height: 100%;
+  min-height: 132px;
+  padding: 12px 14px;
+  color: var(--fg);
+  text-decoration: none;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.target-card:hover {
+  border-color: var(--fg);
+}
+
+.target-card:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 2px;
+}
+
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   min-width: 0;
-  max-width: 100%;
-  font: inherit;
-  padding: 2px 4px;
+}
+
+.card-head .lamp-dot {
+  margin-top: 0.35em;
+}
+
+/* 名稱最多兩行，超過用省略號；完整名稱在 title。 */
+.card-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.card-state {
+  font-weight: 600;
+}
+
+.card-meta {
+  margin-top: auto;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.card-connection {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 16px;
+  margin-top: 16px;
+}
+
+.pager a.pager-link {
+  color: #1a73e8;
+}
+
+.pager-link[aria-disabled="true"] {
+  color: var(--muted);
 }
 
 .last-update {
@@ -200,9 +342,23 @@ body {
   background: var(--lamp-gray);
 }
 
+/* 狀態文字與下方的每秒次數。 */
+.lamp-status {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.2;
+}
+
 .lamp-state {
   font-size: 0.8rem;
   color: var(--muted);
+}
+
+.lamp-rate {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* 詳細面板：來自被監控服務的文字可能很長，一律可換行。 */
