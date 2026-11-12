@@ -36,13 +36,15 @@ export function screenshotPath(name: string): string {
   return path.join(SCREENSHOT_DIR, `${name}.png`);
 }
 
-/** 開啟首頁並以目標選單切到指定目標。 */
+/** 以服務網址開啟指定目標的服務畫面（SPEC §7.1），等到取得目標資料、顯示服務名稱。 */
 export async function openTarget(page: Page, targetId: string): Promise<void> {
-  await page.goto("/");
-  const select = page.locator(".target-selector select");
-  await expect(select.locator(`option[value="${targetId}"]`)).toHaveCount(1);
-  await select.selectOption(targetId);
-  await expect(select).toHaveValue(targetId);
+  await page.goto(`/#/targets/${targetId}`);
+  await expect(page.locator(`.target-screen[data-target-id="${targetId}"] .target-name`)).toBeVisible();
+}
+
+/** 總覽上指定目標的卡片連結。 */
+export function targetCard(page: Page, targetId: string) {
+  return page.locator(`a.target-card[data-target-id="${targetId}"]`);
 }
 
 export async function lampSnapshot(page: Page): Promise<LampSnapshot> {

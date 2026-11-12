@@ -13,6 +13,7 @@ import {
   lampSnapshot,
   openTarget,
   screenshotPath,
+  targetCard,
   uniform,
   waitForUpdates,
   waitLamps,
@@ -44,7 +45,6 @@ test.describe("raw_mock：不是 online 時全灰", () => {
     test(`${mode}：連線 ${code}，全灰`, async ({ page, request }) => {
       await openTarget(page, target);
       await expectConnection(page, code);
-      await expect(page.locator(`.target-selector option[value="${target}"]`)).toHaveText(`Raw ${mode}（${code}）`);
       // 畫面：每個燈號都是灰色、狀態「未知」；從未取得架構時顯示提示且沒有燈號
       await waitLamps(page, uniform(nodes, GRAY_UNKNOWN));
       if (nodes.length === 0) {
@@ -57,6 +57,11 @@ test.describe("raw_mock：不是 online 時全灰", () => {
         expect(node).toMatchObject({ color: "gray", reason: code });
       }
       expect(Object.keys(detail.nodes).sort()).toEqual([...nodes].sort());
+      // 總覽：卡片上的名稱與連線代碼（取代 v1.6 下拉選項文字「Raw ${mode}（${code}）」的檢查）
+      await page.goto("/#/");
+      const card = targetCard(page, target);
+      await expect(card.locator(".card-name")).toHaveText(`Raw ${mode}`);
+      await expect(card.locator(".card-connection")).toHaveText(code);
     });
   }
 });
