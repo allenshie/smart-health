@@ -1,6 +1,6 @@
 # 部署說明（Health App）
 
-Health App 由後端（FastAPI）與前端（React，建置後由後端提供）組成，以單一映像檔部署。本文說明設定檔、compose、網路與安全限制、映像檔與版本發布。開發環境與 e2e 見根目錄 `README.md`。
+Health App 由後端（FastAPI）與前端（React，建置後由後端提供）組成，以單一映像檔部署。本文說明設定檔、compose、網路與安全限制、映像檔與版本發布。開發環境、e2e 與從原始碼建置見 `docs/DEVELOPMENT.md`。
 
 ## 1. 設定檔 `config/targets.yaml`
 
@@ -48,29 +48,36 @@ targets:
 
 ## 2. compose
 
-compose 檔都在 `deploy/`，建置 context 是 repo 根目錄。
+正式部署從追蹤的範本 `deploy/docker-compose.example.yml` 出發：直接使用 Docker Hub 的映像檔（第 4 節），部署主機不需要建置。
 
 | 檔案 | 用途 |
 |---|---|
-| `deploy/docker-compose.yml` | 正式部署，bridge 網路 |
-| `deploy/docker-compose.host.yml` | 正式部署，host 網路 |
-| `deploy/docker-compose.dev.yml` | 開發與 e2e：Health App 加所有模擬服務，見根目錄 `README.md` |
+| `deploy/docker-compose.example.yml` | 正式部署的範本：Docker Hub 的映像檔、bridge 網路，host 網路的寫法以註解提供。複製成 `deploy/docker-compose.yml` 後修改 |
+| `deploy/docker-compose.dev.yml` | 開發與 e2e：從原始碼建置 Health App，加上所有模擬服務，見 `docs/DEVELOPMENT.md` |
 
 ### 2.1 bridge 網路（預設）
 
+從 repo 根目錄複製 example 與設定檔，修改後啟動：
+
 ```bash
-cp config/targets.example.yaml config/targets.yaml
-docker compose -f deploy/docker-compose.yml up -d --build
-SMART_HEALTH_PORT=9000 docker compose -f deploy/docker-compose.yml up -d --build   # 改對外 port
+cp deploy/docker-compose.example.yml deploy/docker-compose.yml
+cp config/targets.example.yaml config/targets.yaml   # 填入實際目標
+docker compose -f deploy/docker-compose.yml up -d
+SMART_HEALTH_PORT=9000 docker compose -f deploy/docker-compose.yml up -d   # 改對外 port
 ```
 
+- 複製出來的 `deploy/docker-compose.yml` 含本機設定，**不進版控**（已列在 `.gitignore`），可以直接修改。
+- 映像檔是 `image` 指定的正式版本（目前 `0.3.0`）。升版時把 tag 改成新版本，可用的版本見 `CHANGELOG.md`；不提供 `latest`。
 - 對外 port 由 `SMART_HEALTH_PORT` 指定，預設 `8000`；容器內固定監聽 8000。
 - `config/targets.yaml` 以唯讀 bind mount 掛入。檔案不存在時 compose 會直接失敗（`bind source path does not exist`），不會自動建立同名目錄。
+- bind mount 的相對路徑（`../config/targets.yaml`）以 compose 檔所在的目錄為基準；把 compose 檔複製到 `deploy/` 以外的位置時，要修改 `source` 的路徑。
 
 ### 2.2 host 網路
 
+依 `deploy/docker-compose.yml`（由 example 複製）中的註解修改：刪掉 `ports`，取消 `network_mode: host` 與 `environment` 的註解，然後啟動：
+
 ```bash
-UVICORN_PORT=8000 docker compose -f deploy/docker-compose.host.yml up -d --build
+UVICORN_PORT=8000 docker compose -f deploy/docker-compose.yml up -d
 ```
 
 **原因（SPEC 第 10 節）：** 已知部分嵌入式主機的 kernel 沒有 iptables `raw` 表，Docker bridge 網路無法建立，這種主機要改用 host 網路。
@@ -84,7 +91,7 @@ host 網路沒有 port 對應，容器直接使用主機的 port，所以 port �
 | `SMART_HEALTH_CONFIG` | `/config/targets.yaml` | 目標設定檔路徑 |
 | `SMART_HEALTH_STATIC_DIR` | `/app/static` | 前端靜態檔目錄；設定了但不存在時啟動失敗 |
 | `UVICORN_HOST`、`UVICORN_PORT` | `0.0.0.0`、`8000` | 容器內的監聽位址與 port |
-| `SMART_HEALTH_PORT` | `8000` | 只用於 `docker-compose.yml` 的主機端對外 port |
+| `SMART_HEALTH_PORT` | `8000` | 只用於由 example 複製的 compose 檔（bridge 網路），主機端的對外 port |
 
 ## 3. 網路與安全限制
 
@@ -115,12 +122,7 @@ docker pull <DOCKERHUB_REPO>:0.3.0                  # 依版本
 docker pull <DOCKERHUB_REPO>@sha256:<digest>        # 依 digest 固定（digest 列在 workflow 的 job summary）
 ```
 
-compose 檔以 `smart-health-app:local` 為映像檔名稱。要用拉下來的映像檔而不在主機上建置：
-
-```bash
-docker tag <DOCKERHUB_REPO>:0.3.0 smart-health-app:local
-docker compose -f deploy/docker-compose.yml up -d --no-build        # host 網路改用 docker-compose.host.yml
-```
+`deploy/docker-compose.example.yml` 已指向 Docker Hub 的正式版（`image: <DOCKERHUB_REPO>:X.Y.Z`），`docker compose up -d` 會直接拉取，部署主機不需要建置（第 2 節）。要測試尚未發布的修改、從原始碼建置正式映像檔時，見 `docs/DEVELOPMENT.md` 第 6 節。
 
 Docker Hub repository 是 private 時，部署主機要先 `docker login`。
 
@@ -165,6 +167,8 @@ Health App 的版本是 `apps/frontend/package.json` 的 `version`（後端版�
    cd apps/frontend && npm version X.Y.Z --no-git-tag-version
    ```
 
+   並把 `deploy/docker-compose.example.yml` 的 `image` 改成新版本（`<DOCKERHUB_REPO>:X.Y.Z`）。
+
 2. 更新 `CHANGELOG.md`：把 Health App 的「未發布」改成這個版本與日期。
 3. 以 pull request 合併到 `main`。建議等 `main` 上 `ci` 的 `docker / image` 完成，確認它推送了這個 commit 的 `sha-<7 碼>`，再推 tag。同一個 commit 的執行會排隊（concurrency 以 commit 分組），所以提早推 tag 也不會互相覆寫：tag 那次會在 `main` 推出 `sha-` 後，只為同一個 digest 加上版本 tag。
 4. 在同一個 commit 打 tag 並 push：
@@ -179,26 +183,12 @@ Health App 的版本是 `apps/frontend/package.json` 的 `version`（後端版�
 tag 那次執行的規則：
 
 - tag 必須是 `app-vX.Y.Z`（X、Y、Z 是不含前導 0 的整數），而且 `X.Y.Z` 必須等於該 commit 的 `package.json` 版本，否則失敗、不推送。要修正時先刪除遠端的 tag（`git push origin :refs/tags/app-vX.Y.Z`），改好再重新打 tag。
+- `deploy/docker-compose.example.yml` 中的 `image:`（註解行不計入）必須剛好一行，而且等於 `<DOCKERHUB_REPO>:X.Y.Z`；找不到、超過一行、不一致，或沒有設定 `DOCKERHUB_REPO` 時失敗、不推送，修正方式同上。push 到 `main`、手動執行與 pull request 不檢查：兩次發布之間，example 指向上一個正式版是正確的。
 - `sha-<7 碼>` 已存在時不重新建置，只為同一個 digest 加上 `X.Y.Z`。不存在時（例如這個 commit 沒有在 `main` 上建置過）才建置、smoke test，再推送兩個 tag。
 - `X.Y.Z` 已存在且指向不同的 digest 時失敗，不覆寫。
 
 ## 6. 開發與 e2e
 
-開發環境（`docker-compose.dev.yml`）與端對端測試（`e2e/run.sh`）的用法見根目錄 `README.md`。
+開發環境（`docker-compose.dev.yml`）、端對端測試（`e2e/run.sh`）、本機測試與 CI 見 `docs/DEVELOPMENT.md`。
 
 e2e 會掛載 Docker socket，讓測試能停止與恢復 `mock-edge-a`。**這只用於本機與用完即丟的測試環境，正式部署不需要，也不要掛載。**
-
-## 7. 檢查 GitHub Actions workflow
-
-`.github/workflows/` 有兩個 workflow，`ci.yml` 是唯一的入口，測試全部通過後才呼叫 `docker.yml`：
-
-| Workflow | 內容 |
-|---|---|
-| `ci.yml` | jobs `ruff`、`record`（Python 3.10、3.11）、`backend`、`examples`、`frontend`；`docker` job 以 `needs` 等這 5 個 job 通過後呼叫 `docker.yml`，只明確傳入 `DOCKERHUB_TOKEN`。concurrency 只設在這裡 |
-| `docker.yml` | reusable workflow（`workflow_call`），GitHub 上顯示為 `docker / image`：建置 `linux/amd64`、`linux/arm64`，smoke test 後推到 Docker Hub（第 4、5 節） |
-
-所有 action 都以完整的 commit SHA 固定，後面註解版本。修改後用固定版本的 actionlint 檢查，輸出必須為空：
-
-```bash
-docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
-```

@@ -1,7 +1,7 @@
 # CI 的唯一入口：ruff 與單元測試（函式庫、契約、後端、模擬服務、前端），
 # 全部通過後才呼叫 docker.yml 建置、smoke test 並推送 Health App 映像檔（docker / image）。
 # 測試 job 不使用 secrets；只有 docker job 明確傳入 DOCKERHUB_TOKEN。
-# e2e 與函式庫的打包檢查在本機執行（見 README「CI」）。
+# e2e 與函式庫的打包檢查在本機執行（見 docs/DEVELOPMENT.md「CI」）。
 name: ci
 
 on:

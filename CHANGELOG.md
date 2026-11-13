@@ -46,6 +46,29 @@
 
 後端的版本一直是 0.1.0，以下依前端的版本列出。
 
+### 未發布
+
+映像檔內容不變，只改部署方式與文件。
+
+**變更**
+
+- **正式部署改用 compose 範本**（§9、§10、[docs/DEPLOY.md](docs/DEPLOY.md)）：追蹤 `deploy/docker-compose.example.yml`，直接拉 Docker Hub 的映像檔（目前 `allen70429/smart-health-app:0.3.0`），部署主機不再建置。刪除 `deploy/docker-compose.yml`、`deploy/docker-compose.host.yml`；host 網路的寫法改成 example 中的註解。
+- **發布：** 發布 `app-vX.Y.Z` 時，example 的 `image` 必須是同一版本；CI 在 tag 執行時檢查，不一致時不推送（[docs/DEPLOY.md](docs/DEPLOY.md) 第 5 節）。
+- **文件：** 本機測試、函式庫打包、CI、開發環境與 e2e 的說明從 README 移到 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
+
+**遷移**
+
+- 從 example 複製出自己的 compose 檔，之後不需要 `--build`：
+
+  ```bash
+  cp deploy/docker-compose.example.yml deploy/docker-compose.yml
+  docker compose -f deploy/docker-compose.yml up -d
+  ```
+
+- 原本用 `docker-compose.host.yml` 的主機：同樣複製 example，依其中的註解改成 host 網路，再以 `UVICORN_PORT=8000 docker compose -f deploy/docker-compose.yml up -d` 啟動。
+- `deploy/docker-compose.yml` 不再進版控（已列在 `.gitignore`）。本機改過舊的 `deploy/docker-compose.yml` 時，`git pull` 前先備份。
+- 原本以 `smart-health-app:local` 從原始碼建置的流程，見 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) 第 6 節。
+
 ### 前端 0.3.0（2026-11-13）
 
 **新增**

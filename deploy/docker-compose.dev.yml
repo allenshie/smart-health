@@ -46,7 +46,7 @@ services:
       timeout: 3s
       retries: 15
 
-  # edge 門檻（理由見 README 與 Task 10 報告）：tick 0.2s、stuck 1s、stale 3s、error window 3s
+  # edge 門檻：tick 0.2s、stuck 1s、stale 3s、error window 3s
   # 讓情境在數秒內收斂；startup grace 30s 遠大於 starting 情境觀察所需的時間（重建 + 數次拉取）。
   mock-edge-a:
     <<: *mock-service

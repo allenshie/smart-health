@@ -691,10 +691,9 @@ smart_health/
 │   └── targets.dev.yaml           # 只含模擬服務的位址
 ├── deploy/
 │   ├── Dockerfile
-│   ├── docker-compose.yml         # Health App 實體
-│   ├── docker-compose.host.yml    # host 網路，用於 Orin 這類環境
+│   ├── docker-compose.example.yml # 正式部署的範本（Docker Hub 映像檔），複製成 docker-compose.yml 後使用，複製的檔案不進版控
 │   └── docker-compose.dev.yml     # Health App + 所有模擬服務
-├── docs/                          # 規格書、導入指南、部署說明與截圖
+├── docs/                          # 規格書、導入指南、部署說明、開發說明與截圖
 └── .github/workflows/
 ```
 
@@ -703,7 +702,7 @@ smart_health/
 ## 10. 發布與部署
 
 - 映像檔支援 `linux/amd64`、`linux/arm64`，因為部署主機尚未決定，可能是 Orin。`linux/amd64` 已驗證；`linux/arm64` 由 CI 建置並以 QEMU smoke test，實機（例如 Orin）尚未驗證，部署到 arm64 主機前必須驗證。
-- 提供 `docker-compose.host.yml`：已知部分 Orin 的 kernel 沒有 iptables `raw` 表，Docker bridge 網路無法建立。
+- `deploy/docker-compose.example.yml` 以註解提供 host 網路的寫法：已知部分 Orin 的 kernel 沒有 iptables `raw` 表，Docker bridge 網路無法建立。
 - 函式庫 tag 用 `record-vX.Y.Z`，App tag 用 `app-vX.Y.Z`，兩者獨立。
 - CI 有兩個 workflow。`ci.yml` 是唯一的入口，push 到 `main`、push `app-vX.Y.Z` tag、pull request 與手動執行時觸發，只改 `**/*.md`、`docs/**` 時跳過（tag 不套用路徑過濾）；測試全部通過後才呼叫 `docker.yml`：
   - `ci.yml`：用固定版本的 ruff（0.8.4）檢查 `packages`、`contract`、`examples`、`apps`；契約與函式庫測試（Python 3.10、3.11）；後端測試；模擬服務測試；前端 lint、typecheck、測試與建置。測試 job 不使用 secrets。tag 推送也會重跑測試。
