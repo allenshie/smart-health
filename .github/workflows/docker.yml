@@ -4,7 +4,9 @@
 # 觸發、路徑過濾與 concurrency 都設在 ci.yml；github context 是呼叫端的事件：
 # - pull request：兩個平台建置與 smoke test，不登入、不推送，不使用 secrets（fork 的 PR 也照常執行）。
 # - push 到 main、workflow_dispatch：推送 sha-<7 碼>。
-# - push tag app-vX.Y.Z：X.Y.Z 必須等於 apps/frontend/package.json 的 version；推送 sha-<7 碼> 與 X.Y.Z。
+# - push tag app-vX.Y.Z：X.Y.Z 必須等於 apps/frontend/package.json 的 version，
+#   deploy/docker-compose.example.yml 唯一的 image:（註解行不計入）必須等於 ${DOCKERHUB_REPO}:X.Y.Z；
+#   推送 sha-<7 碼> 與 X.Y.Z。main、workflow_dispatch 與 pull request 不檢查 example（兩次發布之間指向上一個正式版）。
 #
 # tag 不可變，不推 latest：
 # - sha-<7 碼> 已存在時不重新建置、不覆寫；版本 tag 只為既有的 digest 加上 X.Y.Z。
@@ -53,6 +55,8 @@ jobs:
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
+          # 只在 tag 執行時用來檢查 example 的 image
+          DOCKERHUB_REPO: ${{ vars.DOCKERHUB_REPO }}
         run: |
           set -euo pipefail
           version=""
@@ -70,6 +74,42 @@ jobs:
               echo "::error::tag 的版本 $version 和 apps/frontend/package.json 的 version $package_version 不一致"
               exit 1
             fi
+            # deploy/docker-compose.example.yml 必須指向這次發布的版本：只能有一行 image:（註解行不計入），
+            # 去掉前後空白後和 ${DOCKERHUB_REPO}:X.Y.Z 比對字串
+            if [ -z "$DOCKERHUB_REPO" ]; then
+              echo "::error::缺少 DOCKERHUB_REPO，無法檢查 example"
+              exit 1
+            fi
+            example="deploy/docker-compose.example.yml"
+            expected="$DOCKERHUB_REPO:$version"
+            if [ ! -f "$example" ]; then
+              echo "::error::找不到 $example，預期其中的 image 是 $expected"
+              exit 1
+            fi
+            image_re='^[[:space:]]*image:(.*)$'
+            images=()
+            while IFS= read -r line || [ -n "$line" ]; do
+              if [[ "$line" =~ $image_re ]]; then
+                value="${BASH_REMATCH[1]}"
+                value="${value#"${value%%[![:space:]]*}"}"
+                value="${value%"${value##*[![:space:]]}"}"
+                images+=("$value")
+              fi
+            done < "$example"
+            if [ "${#images[@]}" -eq 0 ]; then
+              echo "::error::$example 中沒有 image:（註解行不計入），預期 image: $expected"
+              exit 1
+            fi
+            if [ "${#images[@]}" -gt 1 ]; then
+              actual="$(printf '「%s」' "${images[@]}")"
+              echo "::error::$example 中有 ${#images[@]} 行 image:（註解行不計入），實際值 $actual；只能有一行，預期 image: $expected"
+              exit 1
+            fi
+            if [ "${images[0]}" != "$expected" ]; then
+              echo "::error::$example 的 image 是「${images[0]}」，預期「$expected」（DOCKERHUB_REPO:版本）；發布前和 package.json 的版本一起改"
+              exit 1
+            fi
+            echo "$example 的 image 是 $expected"
           else
             # push 到 main 與 workflow_dispatch
             mode="main"
