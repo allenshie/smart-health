@@ -702,14 +702,17 @@ smart_health/
 
 ## 10. 發布與部署
 
-- 映像檔支援 `linux/amd64`、`linux/arm64`，因為部署主機尚未決定，可能是 Orin。`linux/amd64` 已驗證；`linux/arm64` 尚未驗證，部署到 arm64 主機（例如 Orin）前必須驗證。
+- 映像檔支援 `linux/amd64`、`linux/arm64`，因為部署主機尚未決定，可能是 Orin。`linux/amd64` 已驗證；`linux/arm64` 由 CI 建置並以 QEMU smoke test，實機（例如 Orin）尚未驗證，部署到 arm64 主機前必須驗證。
 - 提供 `docker-compose.host.yml`：已知部分 Orin 的 kernel 沒有 iptables `raw` 表，Docker bridge 網路無法建立。
 - 函式庫 tag 用 `record-vX.Y.Z`，App tag 用 `app-vX.Y.Z`，兩者獨立。
-- CI 依路徑分開：
-  - `packages/**`、`contract/**`：函式庫測試（Python 3.10、3.11），build，`twine check`。
-  - Python lint：用固定版本的 ruff（0.8.4）檢查 `packages`、`contract`、`examples`、`apps`，兩個 workflow 都執行。
-  - `apps/**`、`contract/**`、`packages/**`、`deploy/**`、`examples/**`、`e2e/**`：後端測試、前端 lint 和測試和建置、映像檔建置、e2e。
-- CI 不自動發布。**PyPI 發布由維護者手動執行。**
+- CI 有兩個 workflow，push 到 `main`、pull request 與手動執行時觸發，只改 `**/*.md`、`docs/**` 時跳過：
+  - `ci.yml`：用固定版本的 ruff（0.8.4）檢查 `packages`、`contract`、`examples`、`apps`；契約與函式庫測試（Python 3.10、3.11）；後端測試；模擬服務測試；前端 lint、typecheck、測試與建置。不使用 secrets。
+  - `docker.yml`：建置 Health App 映像檔（`linux/amd64`、`linux/arm64`），兩個平台都 smoke test 後推到 Docker Hub。push `app-vX.Y.Z` tag 時也會觸發。
+    - pull request 只建置與 smoke test，不推送。
+    - push 到 `main` 推送 `sha-<commit 前 7 碼>`；`app-vX.Y.Z` 推送 `X.Y.Z`，版本必須等於前端 `package.json` 的 `version`。
+    - 不推送 `latest`，已存在的 tag 不覆寫。
+- e2e 與函式庫的打包檢查（build、`twine check`）不在 CI 執行，由維護者在本機執行。
+- **PyPI 發布由維護者手動執行。**
 
 ## 11. 驗收標準
 

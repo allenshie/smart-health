@@ -1,4 +1,4 @@
-# smart_health
+# smart-health
 
 通用的服務健康狀態系統，由三部分組成：
 
@@ -29,7 +29,7 @@ config/             targets.example.yaml（範本）、targets.dev.yaml（只含
 deploy/             Dockerfile 與 compose 檔
 e2e/                Playwright 端對端測試
 docs/               規格書、導入指南、部署說明與截圖
-.github/workflows/  record.yml（函式庫）與 app.yml（Health App）兩個 CI，不發布任何東西
+.github/workflows/  ci.yml（ruff 與單元測試）與 docker.yml（Health App 映像檔推到 Docker Hub）
 ```
 
 ## 本機測試
@@ -79,6 +79,8 @@ uv pip install --python .venv-build/bin/python build==1.2.2 twine==6.1.0
 .venv-build/bin/twine check packages/health_record/dist/*
 ```
 
+CI 不做打包檢查，發布 PyPI 前在本機執行上面的指令。
+
 兩個 `pyproject.toml` 的 build-system 鎖定 `hatchling==1.27.0`，因為較新版本產生的 Metadata 2.5 會被 `twine` 6.1.0 拒絕（`'2.5' is not a valid metadata version`）。升級 hatchling 時要一併確認 twine 是否支援新的 Metadata 版本。
 
 ### GitHub Actions workflow
@@ -91,12 +93,35 @@ docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
 
 ## CI
 
-| Workflow | 路徑過濾 | Jobs |
+| Workflow | 觸發 | Jobs |
 |---|---|---|
-| `record.yml` | `packages/**`、`contract/**`、workflow 本身 | `ruff`、`test`（Python 3.10 與 3.11，含契約測試）、`build`（`python -m build` 加 `twine check`） |
-| `app.yml` | `apps/**`、`packages/**`、`contract/**`、`deploy/**`、`examples/**`、`e2e/**`、`config/**`、workflow 本身 | `ruff`、`backend`、`examples`、`frontend`、`image`、`e2e` |
+| `ci.yml` | push 到 `main`、pull request、手動（`workflow_dispatch`）；只改 `**/*.md`、`docs/**` 時跳過 | `ruff`、`record`（Python 3.10 與 3.11：契約與函式庫測試）、`backend`、`examples`、`frontend`（lint、typecheck、test、build） |
+| `docker.yml` | 同 `ci.yml`，另加 push `app-vX.Y.Z` tag（tag 不套用路徑過濾） | `image`：建置 `linux/amd64`、`linux/arm64`，兩個平台都 smoke test，通過後推到 Docker Hub |
 
-兩個 workflow 都由 `push` 與 `pull_request` 觸發，且都**不發布**：沒有 PyPI、registry push 或 release 步驟，也不使用 secrets。PyPI 發布由維護者手動執行。
+- `ci.yml` 不使用 secrets，不發布任何東西。pytest 一律加 `--import-mode=importlib -W error`。
+- `docker.yml`：
+  - pull request（包括 fork）只建置與 smoke test，不登入、不推送，也不使用 secrets；
+  - push 到 `main` 與手動執行推送 `sha-<commit 前 7 碼>`；
+  - push `app-vX.Y.Z` tag 時推送 `X.Y.Z`，版本必須等於 `apps/frontend/package.json` 的 `version`；
+  - 不推送 `latest`，已存在的 tag 不覆寫。
+  - 需要的 GitHub 設定、tag 規則與發布步驟見 `docs/DEPLOY.md` 第 4、5 節。
+- 下列檢查**不在 CI 執行**，修改相關部分或發布前在本機執行：
+  - e2e（見下方「端對端測試」）：
+
+    ```bash
+    docker compose -f deploy/docker-compose.dev.yml up --build --wait
+    e2e/run.sh
+    docker compose -f deploy/docker-compose.dev.yml down
+    ```
+
+  - 函式庫打包檢查（見上方「函式庫打包」）：
+
+    ```bash
+    .venv-build/bin/python -m build packages/health_record
+    .venv-build/bin/twine check packages/health_record/dist/*
+    ```
+
+- PyPI 發布由維護者手動執行。
 
 ## 部署與導入
 
@@ -127,7 +152,7 @@ docker compose -f deploy/docker-compose.dev.yml down
 - 只有 `health-app` 發布 `127.0.0.1:18000`；模擬服務只在 compose 網路內可見。
 - 目標設定為 `config/targets.dev.yaml`（只含模擬服務位址，拉取間隔 1 秒、請求逾時 3 秒）。
 - 切換 edge 情境：`docker compose -f deploy/docker-compose.dev.yml exec mock-edge-b python -c "import urllib.request as u; print(u.urlopen(u.Request('http://127.0.0.1:19081/scenario', data=b'{\"name\": \"camera_down\"}', method='POST')).read())"`。
-- 本機 docker 沒有 buildx 時，compose v2.24.5 仍可用 Docker Engine 內建的 BuildKit 建置；`docker build` 則會使用 legacy builder 並顯示棄用警告，兩者都能建置成功。
+- 本機 docker 沒有 buildx 時，compose v2.24.5 仍可用 Docker Engine 內建的 BuildKit 建置；`docker build` 則會使用 legacy builder 並顯示棄用警告，兩者都能建置成功。legacy builder 沒有 `BUILDPLATFORM`，前端階段固定用 `linux/amd64`，所以 arm64 主機不能用 legacy builder 建置（見 `docs/DEPLOY.md` 第 4 節）。
 
 ## 端對端測試（e2e）
 
@@ -144,7 +169,7 @@ docker compose -f deploy/docker-compose.dev.yml down
 - 從 `e2e/package.json` 讀出 `@playwright/test` 的確切版本，組出 `mcr.microsoft.com/playwright:v<版本>-noble`，兩者一定一致。
 - 用 `docker run --rm` 加入 `smart-health-dev_default` 網路，在容器內 `npm ci && npx playwright test`，`baseURL` 為 `http://health-app:8000`。
 - 以目前使用者的 uid/gid 執行，`HOME` 與 npm cache 放在容器的 `/tmp`，不產生 root 擁有的檔案。
-- 掛載 `/var/run/docker.sock` 並加入 socket 的群組，讓測試透過 Docker Engine API 停止與恢復 `mock-edge-a`。**只用於本機與用完即丟的 CI runner（如 GitHub-hosted runner）；共用主機與自架 runner 不要掛載 Docker socket。** CI 的 `e2e` job 照用 `e2e/run.sh`，結束後用 `if: always()` 執行 `down`。
+- 掛載 `/var/run/docker.sock` 並加入 socket 的群組，讓測試透過 Docker Engine API 停止與恢復 `mock-edge-a`。**只在本機或用完即丟的測試環境執行；共用主機與自架 runner 不要掛載 Docker socket。** e2e 不在 CI 執行。
 - 只掛載 `e2e/` 與 `docs/screenshots/`（以 `E2E_SCREENSHOT_DIR` 傳入），容器內讀不到 `.env`、`config/targets.yaml` 等其他檔案。
 - 情境切換透過 mock 的控制接口（`POST /scenario`）；情境測試用 `mock-edge-b`，停止與恢復用 `mock-edge-a`。
 - 截圖輸出到 `docs/screenshots/`（`overview`、`normal`、`camera_down`、`offline`、`mock-api`、`mobile`、`mobile_overview`），以 `animations: "disabled"` 截取靜態畫面，光點流動不會出現在截圖中。
