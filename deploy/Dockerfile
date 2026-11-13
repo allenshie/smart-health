@@ -4,7 +4,9 @@
 # base image 一律使用確切 patch 版本的 tag。
 
 # ---- 前端建置：npm ci 依 package-lock.json 安裝，npm run build 含型別檢查 ----
-FROM node:22.22.0-bookworm-slim AS frontend
+# 產物是平台無關的靜態檔，所以只在建置主機的原生平台建置一次，多平台建置時不經過 QEMU。
+# BuildKit 會自動填入 BUILDPLATFORM；legacy builder 沒有這個變數，退回 linux/amd64。
+FROM --platform=${BUILDPLATFORM:-linux/amd64} node:22.22.0-bookworm-slim AS frontend
 WORKDIR /src/apps/frontend
 COPY apps/frontend/package.json apps/frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
