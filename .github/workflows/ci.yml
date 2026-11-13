@@ -1,0 +1,123 @@
+# CI 的唯一入口：ruff 與單元測試（函式庫、契約、後端、模擬服務、前端），
+# 全部通過後才呼叫 docker.yml 建置、smoke test 並推送 Health App 映像檔（docker / image）。
+# 測試 job 不使用 secrets；只有 docker job 明確傳入 DOCKERHUB_TOKEN。
+# e2e 與函式庫的打包檢查在本機執行（見 README「CI」）。
+name: ci
+
+on:
+  push:
+    branches: [main]
+    # 版本 tag 也會重跑測試；GitHub 不對 tag 的 push 套用路徑過濾
+    tags: ["app-v*"]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+  pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# pull request 以 ref 分組並取消舊執行；push 與手動執行以 commit 分組、不取消，
+# 同一個 commit 的 main 與 tag 執行會排隊，不會同時建置並推送 sha- 而互相覆寫。
+# 被呼叫的 docker.yml 不設 concurrency（同名 group 會互相等待）。
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ruff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+      - run: pip install ruff==0.8.4
+      - run: ruff check packages contract examples apps
+
+  record:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      # 測試工具的確切版本由 contract/requirements-dev.txt 固定
+      - run: pip install -r contract/requirements-dev.txt -e packages/health_record
+      - name: 契約測試
+        run: python -m pytest contract/tests -v --import-mode=importlib -W error
+      - name: 函式庫測試
+        run: python -m pytest packages/health_record/tests -v --import-mode=importlib -W error
+
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+      # 執行時依賴以 hash 鎖定；dev 依賴寫確切版本
+      - run: pip install --require-hashes -r apps/backend/requirements.lock
+      - run: pip install pytest==9.2.0 anyio==4.16.0 jsonschema==4.26.0
+      # 後端整合測試會啟動 mock_service 子程序，需要函式庫；兩者都不另外安裝依賴
+      - run: pip install --no-deps -e apps/backend -e packages/health_record
+      - run: python -m pytest apps/backend/tests -q --import-mode=importlib -W error
+
+  examples:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+      - run: pip install pytest==9.2.0 jsonschema==4.26.0 -e packages/health_record
+      - run: python -m pytest examples/tests -q --import-mode=importlib -W error
+
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Node 版本與 deploy/Dockerfile 的建置階段一致
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.22.0"
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  docker:
+    needs: [ruff, record, backend, examples, frontend]
+    uses: ./.github/workflows/docker.yml
+    # 只傳需要的 secret，不用 secrets: inherit
+    secrets:
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

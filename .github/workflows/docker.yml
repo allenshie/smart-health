@@ -1,0 +1,365 @@
+# Health App 映像檔（deploy/Dockerfile 的 app target）：建置 linux/amd64、linux/arm64，smoke test 後推到 Docker Hub。
+#
+# reusable workflow，只由 ci.yml 的 docker job 在所有測試 job 通過後呼叫（GitHub 上顯示為 docker / image）。
+# 觸發、路徑過濾與 concurrency 都設在 ci.yml；github context 是呼叫端的事件：
+# - pull request：兩個平台建置與 smoke test，不登入、不推送，不使用 secrets（fork 的 PR 也照常執行）。
+# - push 到 main、workflow_dispatch：推送 sha-<7 碼>。
+# - push tag app-vX.Y.Z：X.Y.Z 必須等於 apps/frontend/package.json 的 version；推送 sha-<7 碼> 與 X.Y.Z。
+#
+# tag 不可變，不推 latest：
+# - sha-<7 碼> 已存在時不重新建置、不覆寫；版本 tag 只為既有的 digest 加上 X.Y.Z。
+# - 映像檔先推到 runner 上的本機 registry，兩個平台以同一個 digest 做 smoke test，
+#   通過後用 imagetools create 原樣複製到 Docker Hub，推送的就是測過的那一份。
+#
+# 需要的設定（Settings → Secrets and variables → Actions）：
+#   variables：DOCKERHUB_USERNAME、DOCKERHUB_REPO（namespace/repository）
+#   secrets：DOCKERHUB_TOKEN（由 ci.yml 明確傳入）
+name: docker
+
+on:
+  workflow_call:
+    secrets:
+      DOCKERHUB_TOKEN:
+        # 沒有設定時不在這裡失敗，由「檢查 Docker Hub 設定」列出缺少的項目；pull request 不使用
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  LOCAL_IMAGE: localhost:5000/smart-health-app
+  PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    # arm64 經 QEMU 建置與啟動比較慢
+    timeout-minutes: 60
+    services:
+      # 本機 registry：多平台映像檔無法載入 runner 的 Docker，先推到這裡再 smoke test
+      registry:
+        image: registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
+        ports:
+          - 127.0.0.1:5000:5000
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 決定模式與 tag
+        id: mode
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          version=""
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            mode="pr"
+          elif [ "$EVENT_NAME" = "push" ] && [ "$REF_TYPE" = "tag" ]; then
+            mode="release"
+            if [[ ! "$REF_NAME" =~ ^app-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+              echo "::error::tag「$REF_NAME」的格式不符，必須是 app-vX.Y.Z（X、Y、Z 是不含前導 0 的整數）"
+              exit 1
+            fi
+            version="${REF_NAME#app-v}"
+            package_version="$(python3 -c 'import json; print(json.load(open("apps/frontend/package.json", encoding="utf-8"))["version"])')"
+            if [ "$version" != "$package_version" ]; then
+              echo "::error::tag 的版本 $version 和 apps/frontend/package.json 的 version $package_version 不一致"
+              exit 1
+            fi
+          else
+            # push 到 main 與 workflow_dispatch
+            mode="main"
+          fi
+          if [ "$mode" = "pr" ]; then push=false; else push=true; fi
+          {
+            echo "mode=$mode"
+            echo "push=$push"
+            echo "sha_tag=sha-${COMMIT_SHA:0:7}"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+          echo "模式：$mode；推送：$push；sha tag：sha-${COMMIT_SHA:0:7}${version:+；版本：$version}"
+
+      - name: 檢查 Docker Hub 設定
+        id: config
+        if: steps.mode.outputs.push == 'true'
+        env:
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          DOCKERHUB_REPO: ${{ vars.DOCKERHUB_REPO }}
+          # 只傳「有沒有設定」，不把 token 放進環境變數
+          HAS_DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          failed=0
+          if [ -z "$DOCKERHUB_USERNAME" ]; then
+            echo "::error::缺少 repository variable DOCKERHUB_USERNAME"
+            failed=1
+          fi
+          if [ -z "$DOCKERHUB_REPO" ]; then
+            echo "::error::缺少 repository variable DOCKERHUB_REPO（格式 namespace/repository）"
+            failed=1
+          elif [[ ! "$DOCKERHUB_REPO" =~ ^[a-z0-9][a-z0-9_.-]*/[a-z0-9][a-z0-9_.-]*$ ]]; then
+            echo "::error::DOCKERHUB_REPO「$DOCKERHUB_REPO」的格式不符，必須是 namespace/repository（小寫英數字與 _ . -）"
+            failed=1
+          fi
+          if [ "$HAS_DOCKERHUB_TOKEN" != "true" ]; then
+            echo "::error::缺少 repository secret DOCKERHUB_TOKEN"
+            failed=1
+          fi
+          if [ "$failed" -ne 0 ]; then
+            exit 1
+          fi
+          echo "image=docker.io/$DOCKERHUB_REPO" >> "$GITHUB_OUTPUT"
+
+      - name: 登入 Docker Hub
+        if: steps.mode.outputs.push == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 設定 QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          image: docker.io/tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+          platforms: arm64
+
+      - name: 設定 Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        with:
+          # host 網路才連得到本機 registry；本機 registry 只有 http
+          driver-opts: |
+            image=moby/buildkit:v0.34.1@sha256:99368f3e46177c6405b9740e4461d91cee004128daeecca78d4ceac50ec1da5c
+            network=host
+          buildkitd-config-inline: |
+            [registry."localhost:5000"]
+              http = true
+
+      - name: 查詢 Docker Hub 上既有的 tag
+        id: existing
+        if: steps.mode.outputs.push == 'true'
+        env:
+          MODE: ${{ steps.mode.outputs.mode }}
+          IMAGE: ${{ steps.config.outputs.image }}
+          SHA_TAG: ${{ steps.mode.outputs.sha_tag }}
+          VERSION: ${{ steps.mode.outputs.version }}
+        run: |
+          set -euo pipefail
+          # 印出 tag 的 digest；tag 不存在時印出空字串；其他錯誤（例如權限）則失敗，不當成不存在
+          lookup() {
+            local ref="$1" out err
+            err="$(mktemp)"
+            if out="$(docker buildx imagetools inspect "$ref" --format '{{.Manifest.Digest}}' 2>"$err")"; then
+              if [[ ! "$out" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+                echo "::error::$ref 的 digest「$out」格式不符" >&2
+                return 1
+              fi
+              echo "$out"
+            elif grep -qi 'not found' "$err"; then
+              echo ""
+            else
+              echo "::error::無法查詢 $ref：$(tr '\n' ' ' < "$err")" >&2
+              return 1
+            fi
+          }
+          sha_digest="$(lookup "$IMAGE:$SHA_TAG")"
+          version_digest=""
+          if [ "$MODE" = "release" ]; then
+            version_digest="$(lookup "$IMAGE:$VERSION")"
+          fi
+          if [ -n "$sha_digest" ]; then
+            if [ "$MODE" = "main" ]; then
+              action=none
+              echo "$SHA_TAG 已存在（$sha_digest），不重新建置、不覆寫"
+            elif [ -z "$version_digest" ]; then
+              action=tag
+              echo "$SHA_TAG 已存在（$sha_digest），只為同一個 digest 加上 $VERSION"
+            elif [ "$version_digest" = "$sha_digest" ]; then
+              action=none
+              echo "$VERSION 與 $SHA_TAG 已指向同一個 digest（$sha_digest），不需要推送"
+            else
+              echo "::error::$VERSION 已指向 $version_digest，和 $SHA_TAG 的 $sha_digest 不同；tag 不可變，不覆寫"
+              exit 1
+            fi
+          else
+            if [ -n "$version_digest" ]; then
+              echo "::error::$VERSION 已存在（$version_digest），但 $SHA_TAG 不存在；tag 不可變，不覆寫"
+              exit 1
+            fi
+            action=build
+            echo "$SHA_TAG 不存在，建置並推送"
+          fi
+          {
+            echo "action=$action"
+            echo "sha_digest=$sha_digest"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 建置並推到本機 registry
+        id: build
+        if: steps.mode.outputs.push != 'true' || steps.existing.outputs.action == 'build'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          target: app
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ env.LOCAL_IMAGE }}:ci
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,scope=app,mode=max
+          provenance: false
+          sbom: false
+
+      - name: smoke test（linux/amd64、linux/arm64）
+        if: steps.build.outcome == 'success'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::建置結果的 digest「$DIGEST」格式不符"
+            exit 1
+          fi
+          ref="$LOCAL_IMAGE@$DIGEST"
+          # 掛上範例設定：目標連不到，但後端照常啟動，/healthz 不依賴目標
+          config="$PWD/config/targets.example.yaml"
+          smoke() {
+            local arch="$1" limit="$2" name="smoke-$1" port machine path code deadline
+            docker pull -q --platform "linux/$arch" "$ref" > /dev/null
+            docker run -d --name "$name" --platform "linux/$arch" -p 127.0.0.1::8000 \
+              -v "$config:/config/targets.yaml:ro" "$ref" > /dev/null
+            if ! port="$(docker port "$name" 8000/tcp | head -n 1 | sed 's/.*://')" || [ -z "$port" ]; then
+              docker logs "$name" || true
+              echo "::error::linux/$arch：容器沒有持續執行"
+              return 1
+            fi
+            deadline=$((SECONDS + limit))
+            until curl -fs -o /dev/null "http://127.0.0.1:$port/healthz"; do
+              if [ "$(docker inspect --format '{{.State.Running}}' "$name")" != "true" ] || [ "$SECONDS" -ge "$deadline" ]; then
+                docker logs "$name" || true
+                echo "::error::linux/$arch：${limit} 秒內 /healthz 沒有回應"
+                return 1
+              fi
+              sleep 2
+            done
+            machine="$(docker exec "$name" uname -m)"
+            echo "linux/$arch：容器內 uname -m 是 $machine"
+            case "$arch:$machine" in
+              amd64:x86_64 | arm64:aarch64) ;;
+              *)
+                echo "::error::linux/$arch 的容器實際平台是 $machine"
+                return 1
+                ;;
+            esac
+            for path in /healthz /api/config /; do
+              code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port$path")"
+              echo "linux/$arch GET $path → $code"
+              if [ "$code" != "200" ]; then
+                docker logs "$name" || true
+                echo "::error::linux/$arch：GET $path 回 $code，不是 200"
+                return 1
+              fi
+            done
+            docker rm -f "$name" > /dev/null
+            # 傳統映像檔儲存中，同一個 index digest 的參照已指向這個平台的映像檔，下一個平台無法覆寫，先移除
+            docker image rm "$ref" > /dev/null
+          }
+          smoke amd64 120
+          smoke arm64 300
+
+      - name: 推送到 Docker Hub
+        id: publish
+        if: steps.mode.outputs.push == 'true' && steps.existing.outputs.action == 'build'
+        env:
+          MODE: ${{ steps.mode.outputs.mode }}
+          IMAGE: ${{ steps.config.outputs.image }}
+          SHA_TAG: ${{ steps.mode.outputs.sha_tag }}
+          VERSION: ${{ steps.mode.outputs.version }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          tags=("$IMAGE:$SHA_TAG")
+          if [ "$MODE" = "release" ]; then
+            tags+=("$IMAGE:$VERSION")
+          fi
+          args=()
+          for tag in "${tags[@]}"; do
+            args+=(-t "$tag")
+          done
+          # 單一來源時原樣複製 manifest，digest 不變
+          docker buildx imagetools create "${args[@]}" "$LOCAL_IMAGE@$DIGEST"
+          for tag in "${tags[@]}"; do
+            got="$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}')"
+            if [ "$got" != "$DIGEST" ]; then
+              echo "::error::$tag 的 digest 是 $got，和 smoke test 測過的 $DIGEST 不同"
+              exit 1
+            fi
+          done
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: 為既有的 digest 加上版本 tag
+        id: tag
+        if: steps.existing.outputs.action == 'tag'
+        env:
+          IMAGE: ${{ steps.config.outputs.image }}
+          VERSION: ${{ steps.mode.outputs.version }}
+          DIGEST: ${{ steps.existing.outputs.sha_digest }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create -t "$IMAGE:$VERSION" "$IMAGE@$DIGEST"
+          got="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{.Manifest.Digest}}')"
+          if [ "$got" != "$DIGEST" ]; then
+            echo "::error::$IMAGE:$VERSION 的 digest 是 $got，和 sha- tag 的 $DIGEST 不同"
+            exit 1
+          fi
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: 摘要
+        env:
+          MODE: ${{ steps.mode.outputs.mode }}
+          ACTION: ${{ steps.existing.outputs.action }}
+          IMAGE: ${{ steps.config.outputs.image }}
+          SHA_TAG: ${{ steps.mode.outputs.sha_tag }}
+          VERSION: ${{ steps.mode.outputs.version }}
+          BUILD_DIGEST: ${{ steps.build.outputs.digest }}
+          DIGEST: ${{ steps.publish.outputs.digest || steps.tag.outputs.digest || steps.existing.outputs.sha_digest }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "pr" ]; then
+            {
+              echo "## Health App 映像檔（pull request）"
+              echo ""
+              echo "$PLATFORMS 建置與 smoke test 通過；沒有登入、沒有推送。"
+              echo ""
+              echo "本機 registry 的 digest：\`$BUILD_DIGEST\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::digest「$DIGEST」格式不符"
+            exit 1
+          fi
+          case "$ACTION" in
+            build) note="新建置，smoke test 通過後推送。" ;;
+            tag) note="$SHA_TAG 已存在，沒有重新建置，只為同一個 digest 加上 $VERSION。" ;;
+            none) note="tag 已存在，沒有重新建置，也沒有覆寫。" ;;
+            *) echo "::error::未知的動作「$ACTION」"; exit 1 ;;
+          esac
+          tags=("$SHA_TAG")
+          if [ "$MODE" = "release" ]; then
+            tags+=("$VERSION")
+          fi
+          {
+            echo "## Health App 映像檔"
+            echo ""
+            echo "$note 平台：$PLATFORMS。"
+            echo ""
+            echo "| tag | digest | image@digest |"
+            echo "|---|---|---|"
+            for tag in "${tags[@]}"; do
+              echo "| \`$IMAGE:$tag\` | \`$DIGEST\` | \`$IMAGE@$DIGEST\` |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"

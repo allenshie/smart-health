@@ -1,6 +1,6 @@
 # 變更紀錄
 
-依元件分開列出各版本對使用者與整合者有意義的改變，新版在上。函式庫與 Health App 的版本各自獨立。括號內是 [docs/SPEC.md](docs/SPEC.md) 的章節。目前沒有 git tag，日期是該版本內容定案的日期。
+依元件分開列出各版本對使用者與整合者有意義的改變，新版在上。函式庫與 Health App 的版本各自獨立。括號內是 [docs/SPEC.md](docs/SPEC.md) 的章節。Health App 自 0.3.0 起以 `app-vX.Y.Z` tag 發布；更早的版本與函式庫沒有 git tag，日期是該版本內容定案的日期。
 
 ## 函式庫 `smart-health-record`
 
@@ -46,7 +46,14 @@
 
 後端的版本一直是 0.1.0，以下依前端的版本列出。
 
-### 前端 0.3.0（2026-11-12）
+### 前端 0.3.0（2026-11-13）
+
+**新增**
+
+- **映像檔發布到 Docker Hub**（§10、[docs/DEPLOY.md](docs/DEPLOY.md)）：CI 的測試全部通過後才推送。每個 tag 都同時含 `linux/amd64` 與 `linux/arm64`；`linux/arm64` 由 CI 建置並以 QEMU smoke test，實機（例如 Orin）尚未驗證。
+  - push 到 `main`：`sha-<commit 前 7 碼>`。
+  - push `app-vX.Y.Z` tag：`X.Y.Z`，必須等於前端 `package.json` 的版本，和同一個 commit 的 `sha-` tag 指向同一個 digest。
+  - 不推送 `latest`；已存在的 tag 不覆寫。
 
 **變更**（只改外觀，判斷規則與狀態文字不變；§7.1「視覺」）
 
@@ -60,6 +67,7 @@
 
 **部署注意**
 
+- `deploy/Dockerfile` 的前端階段改在建置主機的原生平台執行。沒有 buildx 時的 `docker build`（legacy builder）會用 `linux/amd64`，所以 arm64 主機請拉 Docker Hub 的映像檔，或用 buildx 建置。
 - 前端使用 inline `<style>` 與 `style` 屬性。反向代理若加上 CSP，`style-src` 需要允許 inline（[docs/DEPLOY.md](docs/DEPLOY.md)）。
 
 ### 前端 0.2.0（2026-11-12）

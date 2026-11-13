@@ -1,6 +1,6 @@
 # 部署說明（Health App）
 
-Health App 由後端（FastAPI）與前端（React，建置後由後端提供）組成，以單一映像檔部署。本文說明設定檔、compose、網路與安全限制。開發環境與 e2e 見根目錄 `README.md`。
+Health App 由後端（FastAPI）與前端（React，建置後由後端提供）組成，以單一映像檔部署。本文說明設定檔、compose、網路與安全限制、映像檔與版本發布。開發環境與 e2e 見根目錄 `README.md`。
 
 ## 1. 設定檔 `config/targets.yaml`
 
@@ -98,6 +98,36 @@ host 網路沒有 port 對應，容器直接使用主機的 port，所以 port �
 
 ## 4. 映像檔
 
+### 4.1 從 Docker Hub 拉取
+
+`ci.yml` 的測試全部通過後，呼叫 `docker.yml`（GitHub 上的 job 名稱是 `docker / image`）把映像檔推到 Docker Hub 的 `<DOCKERHUB_REPO>`（GitHub repository variable，格式 `namespace/repository`）。每個 tag 都是同時含 `linux/amd64` 與 `linux/arm64` 的 manifest list，`docker pull` 會自動選主機的平台。
+
+| tag | 來源 | 說明 |
+|---|---|---|
+| `X.Y.Z` | push `app-vX.Y.Z` tag | 正式版本，等於 `apps/frontend/package.json` 的 `version` |
+| `sha-<commit 前 7 碼>` | push 到 `main`、手動執行 | 每個 commit 一個 |
+
+- 不推送 `latest`。tag 不可變：已存在的 tag 不重新建置、不覆寫。
+- 同一個 commit 的 `X.Y.Z` 與 `sha-` 指向同一個 digest。
+
+```bash
+docker pull <DOCKERHUB_REPO>:0.3.0                  # 依版本
+docker pull <DOCKERHUB_REPO>@sha256:<digest>        # 依 digest 固定（digest 列在 workflow 的 job summary）
+```
+
+compose 檔以 `smart-health-app:local` 為映像檔名稱。要用拉下來的映像檔而不在主機上建置：
+
+```bash
+docker tag <DOCKERHUB_REPO>:0.3.0 smart-health-app:local
+docker compose -f deploy/docker-compose.yml up -d --no-build        # host 網路改用 docker-compose.host.yml
+```
+
+Docker Hub repository 是 private 時，部署主機要先 `docker login`。
+
+**平台：** `linux/amd64` 已驗證。`linux/arm64` 由 CI 建置並以 QEMU smoke test，**實機（例如 Orin）尚未驗證，部署到 arm64 主機前必須驗證。**
+
+### 4.2 Dockerfile
+
 `deploy/Dockerfile` 為多階段建置（`frontend` 建置前端、`app` 為正式執行階段、`mock` 只供開發與 e2e）：
 
 - **以非 root 執行**：uid/gid 10001。
@@ -109,17 +139,65 @@ host 網路沒有 port 對應，容器直接使用主機的 port，所以 port �
     -o apps/backend/requirements.lock
   ```
 
-- **平台：** 已驗證 `linux/amd64`。**`linux/arm64` 尚未驗證，部署到 arm64 主機（例如 Orin）前必須驗證。**
+- **前端只建置一次：** 前端的產物是平台無關的靜態檔，`frontend` 階段寫成 `FROM --platform=${BUILDPLATFORM:-linux/amd64}`，在建置主機的原生平台執行，多平台建置時不經過 QEMU。
+- **已知限制：** legacy builder（沒有 buildx 時的 `docker build`）沒有 `BUILDPLATFORM`，前端階段會退回 `linux/amd64` 的 node，**在 arm64 主機上建置會失敗**。arm64 主機請直接拉 Docker Hub 的映像檔（4.1），或用 buildx 建置，BuildKit 會填入主機的實際平台。
 
-## 5. 開發與 e2e
+### 4.3 推送映像檔需要的 GitHub 設定
+
+在 GitHub repo 的 Settings → Secrets and variables → Actions 設定：
+
+| 種類 | 名稱 | 內容 |
+|---|---|---|
+| Variable | `DOCKERHUB_USERNAME` | Docker Hub 帳號 |
+| Variable | `DOCKERHUB_REPO` | `namespace/repository`，例如 `<帳號>/smart-health-app`；只能用小寫英數字與 `_`、`.`、`-` |
+| Secret | `DOCKERHUB_TOKEN` | 具 Read & Write 權限的 Docker Hub access token |
+
+- 缺少任何一項或格式不符時，push 到 `main`、手動執行與 push tag 會在「檢查 Docker Hub 設定」步驟失敗並列出缺少的項目。pull request 不使用這些設定，不受影響。
+- token 只用在登入步驟，不會印到 log。
+
+## 5. 發布 Health App 版本
+
+Health App 的版本是 `apps/frontend/package.json` 的 `version`（後端版本另計，見 `CHANGELOG.md`）。
+
+1. 改版本號（同時更新 `package-lock.json`）：
+
+   ```bash
+   cd apps/frontend && npm version X.Y.Z --no-git-tag-version
+   ```
+
+2. 更新 `CHANGELOG.md`：把 Health App 的「未發布」改成這個版本與日期。
+3. 以 pull request 合併到 `main`。建議等 `main` 上 `ci` 的 `docker / image` 完成，確認它推送了這個 commit 的 `sha-<7 碼>`，再推 tag。同一個 commit 的執行會排隊（concurrency 以 commit 分組），所以提早推 tag 也不會互相覆寫：tag 那次會在 `main` 推出 `sha-` 後，只為同一個 digest 加上版本 tag。
+4. 在同一個 commit 打 tag 並 push：
+
+   ```bash
+   git tag app-vX.Y.Z <commit>
+   git push origin app-vX.Y.Z
+   ```
+
+5. 確認 tag 觸發的 `ci` 通過（測試會重跑，通過後才執行 `docker / image`），job summary 中 `X.Y.Z` 與 `sha-<7 碼>` 的 digest 相同。
+
+tag 那次執行的規則：
+
+- tag 必須是 `app-vX.Y.Z`（X、Y、Z 是不含前導 0 的整數），而且 `X.Y.Z` 必須等於該 commit 的 `package.json` 版本，否則失敗、不推送。要修正時先刪除遠端的 tag（`git push origin :refs/tags/app-vX.Y.Z`），改好再重新打 tag。
+- `sha-<7 碼>` 已存在時不重新建置，只為同一個 digest 加上 `X.Y.Z`。不存在時（例如這個 commit 沒有在 `main` 上建置過）才建置、smoke test，再推送兩個 tag。
+- `X.Y.Z` 已存在且指向不同的 digest 時失敗，不覆寫。
+
+## 6. 開發與 e2e
 
 開發環境（`docker-compose.dev.yml`）與端對端測試（`e2e/run.sh`）的用法見根目錄 `README.md`。
 
 e2e 會掛載 Docker socket，讓測試能停止與恢復 `mock-edge-a`。**這只用於本機與用完即丟的測試環境，正式部署不需要，也不要掛載。**
 
-## 6. 檢查 GitHub Actions workflow
+## 7. 檢查 GitHub Actions workflow
 
-`.github/workflows/` 的兩個 workflow 不發布任何東西。修改後可用固定版本的 actionlint 檢查，輸出必須為空：
+`.github/workflows/` 有兩個 workflow，`ci.yml` 是唯一的入口，測試全部通過後才呼叫 `docker.yml`：
+
+| Workflow | 內容 |
+|---|---|
+| `ci.yml` | jobs `ruff`、`record`（Python 3.10、3.11）、`backend`、`examples`、`frontend`；`docker` job 以 `needs` 等這 5 個 job 通過後呼叫 `docker.yml`，只明確傳入 `DOCKERHUB_TOKEN`。concurrency 只設在這裡 |
+| `docker.yml` | reusable workflow（`workflow_call`），GitHub 上顯示為 `docker / image`：建置 `linux/amd64`、`linux/arm64`，smoke test 後推到 Docker Hub（第 4、5 節） |
+
+所有 action 都以完整的 commit SHA 固定，後面註解版本。修改後用固定版本的 actionlint 檢查，輸出必須為空：
 
 ```bash
 docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
