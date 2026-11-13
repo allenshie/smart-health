@@ -1,0 +1,31 @@
+# 正式部署 Health App 的 compose 範本：直接使用 Docker Hub 的映像檔，不在主機上建置。
+# 從 repo 根目錄複製並啟動：
+#   cp deploy/docker-compose.example.yml deploy/docker-compose.yml
+#   cp config/targets.example.yaml config/targets.yaml   # 填入實際目標
+#   docker compose -f deploy/docker-compose.yml up -d
+# 複製出來的 deploy/docker-compose.yml 含本機設定，不進版控（config/targets.yaml 也是）。
+# 升版時把 image 的 tag 改成新版本，可用的版本見 CHANGELOG.md（不提供 latest）。
+# bind mount 的相對路徑以 compose 檔所在的目錄為基準；複製到 deploy/ 以外的位置時，要修改 source 的路徑。
+# 說明見 docs/DEPLOY.md 第 2 節。
+services:
+  health-app:
+    image: allen70429/smart-health-app:0.3.0
+    # bridge 網路（預設）：對外 port 用 SMART_HEALTH_PORT 調整（預設 8000），容器內固定監聽 8000。
+    ports:
+      - "${SMART_HEALTH_PORT:-8000}:8000"
+    # host 網路：部分 Orin 的 kernel 沒有 iptables raw 表，Docker bridge 網路無法建立，這種主機改用 host 網路。
+    # host 網路沒有 port 對應：刪掉上面的 ports，取消下面三行的註解，port 改由 UVICORN_PORT 指定（預設 8000）。
+    # 容器直接使用主機的 port，不要和主機上其他服務衝突。啟動：
+    #   UVICORN_PORT=8000 docker compose -f deploy/docker-compose.yml up -d
+    # network_mode: host
+    # environment:
+    #   UVICORN_PORT: ${UVICORN_PORT:-8000}
+    volumes:
+      # config/targets.yaml 不存在時直接失敗，不讓 Docker 自動建立同名目錄
+      - type: bind
+        source: ../config/targets.yaml
+        target: /config/targets.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+    restart: unless-stopped

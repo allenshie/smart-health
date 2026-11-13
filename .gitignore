@@ -1,4 +1,6 @@
 config/targets.yaml
+# 由 deploy/docker-compose.example.yml 複製、內含本機設定
+/deploy/docker-compose.yml
 .env
 node_modules
 .venv*
