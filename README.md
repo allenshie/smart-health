@@ -29,7 +29,7 @@ config/             targets.example.yaml（範本）、targets.dev.yaml（只含
 deploy/             Dockerfile 與 compose 檔
 e2e/                Playwright 端對端測試
 docs/               規格書、導入指南、部署說明與截圖
-.github/workflows/  ci.yml（ruff 與單元測試）與 docker.yml（Health App 映像檔推到 Docker Hub）
+.github/workflows/  ci.yml（唯一的入口：ruff、單元測試，通過後呼叫 docker.yml）與 docker.yml（Health App 映像檔推到 Docker Hub）
 ```
 
 ## 本機測試
@@ -93,13 +93,17 @@ docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
 
 ## CI
 
-| Workflow | 觸發 | Jobs |
-|---|---|---|
-| `ci.yml` | push 到 `main`、pull request、手動（`workflow_dispatch`）；只改 `**/*.md`、`docs/**` 時跳過 | `ruff`、`record`（Python 3.10 與 3.11：契約與函式庫測試）、`backend`、`examples`、`frontend`（lint、typecheck、test、build） |
-| `docker.yml` | 同 `ci.yml`，另加 push `app-vX.Y.Z` tag（tag 不套用路徑過濾） | `image`：建置 `linux/amd64`、`linux/arm64`，兩個平台都 smoke test，通過後推到 Docker Hub |
+`ci.yml` 是唯一的入口，測試全部通過後才呼叫 `docker.yml`（reusable workflow）。
 
-- `ci.yml` 不使用 secrets，不發布任何東西。pytest 一律加 `--import-mode=importlib -W error`。
-- `docker.yml`：
+| Workflow | 觸發 | Jobs（GitHub 上的名稱） |
+|---|---|---|
+| `ci.yml` | push 到 `main`、push `app-vX.Y.Z` tag、pull request、手動（`workflow_dispatch`）；只改 `**/*.md`、`docs/**` 時跳過（tag 不套用路徑過濾） | `ruff`、`record`（Python 3.10 與 3.11：契約與函式庫測試）、`backend`、`examples`、`frontend`（lint、typecheck、test、build），以及 `docker`（呼叫 `docker.yml`） |
+| `docker.yml` | 只由 `ci.yml` 的 `docker` job 呼叫（`workflow_call`），`needs` 上面 5 個測試 job | `docker / image`：建置 `linux/amd64`、`linux/arm64`，兩個平台都 smoke test，通過後推到 Docker Hub |
+
+- 任一測試 job 失敗時，`docker / image` 不執行，不會推送映像檔。push 版本 tag 時也會重跑全部測試。
+- 測試 job 不使用 secrets；只有 `docker` job 明確傳入 `DOCKERHUB_TOKEN`（不用 `secrets: inherit`）。pytest 一律加 `--import-mode=importlib -W error`。
+- concurrency 只設在 `ci.yml`：pull request 以 ref 分組並取消舊執行；push 與手動執行以 commit 分組、不取消，同一個 commit 的 `main` 與 tag 執行會排隊。
+- `docker / image`：
   - pull request（包括 fork）只建置與 smoke test，不登入、不推送，也不使用 secrets；
   - push 到 `main` 與手動執行推送 `sha-<commit 前 7 碼>`；
   - push `app-vX.Y.Z` tag 時推送 `X.Y.Z`，版本必須等於 `apps/frontend/package.json` 的 `version`；
