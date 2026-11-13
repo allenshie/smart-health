@@ -264,6 +264,8 @@ jobs:
               fi
             done
             docker rm -f "$name" > /dev/null
+            # 傳統映像檔儲存中，同一個 index digest 的參照已指向這個平台的映像檔，下一個平台無法覆寫，先移除
+            docker image rm "$ref" > /dev/null
           }
           smoke amd64 120
           smoke arm64 300
