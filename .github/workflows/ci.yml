@@ -1,10 +1,14 @@
-# ruff 與單元測試（函式庫、契約、後端、模擬服務、前端）。
-# 不發布、不使用 secrets。e2e 與函式庫的打包檢查在本機執行（見 README「CI」）。
+# CI 的唯一入口：ruff 與單元測試（函式庫、契約、後端、模擬服務、前端），
+# 全部通過後才呼叫 docker.yml 建置、smoke test 並推送 Health App 映像檔（docker / image）。
+# 測試 job 不使用 secrets；只有 docker job 明確傳入 DOCKERHUB_TOKEN。
+# e2e 與函式庫的打包檢查在本機執行（見 README「CI」）。
 name: ci
 
 on:
   push:
     branches: [main]
+    # 版本 tag 也會重跑測試；GitHub 不對 tag 的 push 套用路徑過濾
+    tags: ["app-v*"]
     paths-ignore:
       - "**/*.md"
       - "docs/**"
@@ -17,9 +21,12 @@ on:
 permissions:
   contents: read
 
+# pull request 以 ref 分組並取消舊執行；push 與手動執行以 commit 分組、不取消，
+# 同一個 commit 的 main 與 tag 執行會排隊，不會同時建置並推送 sha- 而互相覆寫。
+# 被呼叫的 docker.yml 不設 concurrency（同名 group 會互相等待）。
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   ruff:
@@ -107,3 +114,10 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  docker:
+    needs: [ruff, record, backend, examples, frontend]
+    uses: ./.github/workflows/docker.yml
+    # 只傳需要的 secret，不用 secrets: inherit
+    secrets:
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

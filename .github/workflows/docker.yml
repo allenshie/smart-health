@@ -1,5 +1,7 @@
 # Health App 映像檔（deploy/Dockerfile 的 app target）：建置 linux/amd64、linux/arm64，smoke test 後推到 Docker Hub。
 #
+# reusable workflow，只由 ci.yml 的 docker job 在所有測試 job 通過後呼叫（GitHub 上顯示為 docker / image）。
+# 觸發、路徑過濾與 concurrency 都設在 ci.yml；github context 是呼叫端的事件：
 # - pull request：兩個平台建置與 smoke test，不登入、不推送，不使用 secrets（fork 的 PR 也照常執行）。
 # - push 到 main、workflow_dispatch：推送 sha-<7 碼>。
 # - push tag app-vX.Y.Z：X.Y.Z 必須等於 apps/frontend/package.json 的 version；推送 sha-<7 碼> 與 X.Y.Z。
@@ -11,30 +13,18 @@
 #
 # 需要的設定（Settings → Secrets and variables → Actions）：
 #   variables：DOCKERHUB_USERNAME、DOCKERHUB_REPO（namespace/repository）
-#   secrets：DOCKERHUB_TOKEN
+#   secrets：DOCKERHUB_TOKEN（由 ci.yml 明確傳入）
 name: docker
 
 on:
-  push:
-    branches: [main]
-    tags: ["app-v*"]
-    # GitHub 不對 tag 的 push 套用路徑過濾
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-  pull_request:
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-  workflow_dispatch:
+  workflow_call:
+    secrets:
+      DOCKERHUB_TOKEN:
+        # 沒有設定時不在這裡失敗，由「檢查 Docker Hub 設定」列出缺少的項目；pull request 不使用
+        required: false
 
 permissions:
   contents: read
-
-concurrency:
-  group: docker-${{ github.ref }}
-  # 推送中的執行不取消，避免只推了一部分的 tag
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   LOCAL_IMAGE: localhost:5000/smart-health-app
