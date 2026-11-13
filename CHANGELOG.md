@@ -1,6 +1,6 @@
 # 變更紀錄
 
-依元件分開列出各版本對使用者與整合者有意義的改變，新版在上。函式庫與 Health App 的版本各自獨立。括號內是 [docs/SPEC.md](docs/SPEC.md) 的章節。目前沒有 git tag，日期是該版本內容定案的日期。
+依元件分開列出各版本對使用者與整合者有意義的改變，新版在上。函式庫與 Health App 的版本各自獨立。括號內是 [docs/SPEC.md](docs/SPEC.md) 的章節。Health App 自 0.3.0 起以 `app-vX.Y.Z` tag 發布；更早的版本與函式庫沒有 git tag，日期是該版本內容定案的日期。
 
 ## 函式庫 `smart-health-record`
 
